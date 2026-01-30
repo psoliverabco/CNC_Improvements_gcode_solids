@@ -1,0 +1,86 @@
+﻿<Window x:Class="CNC_Improvements_gcode_solids.Utilities.ColorPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pick Colour"
+        Width="520"
+        Height="340"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#222">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Output format: #AARRGGBB"
+                   Foreground="#DDD"
+                   FontFamily="Consolas"
+                   Margin="0,0,0,10"/>
+
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="200"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="TxtHex"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     VerticalContentAlignment="Center"
+                     TextChanged="TxtHex_TextChanged"
+                     Margin="0,0,10,0"/>
+
+            <Border Grid.Column="1"
+                    BorderBrush="#666"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Background="#111"
+                    Padding="8">
+                <StackPanel>
+                    <TextBlock Text="Preview" Foreground="#CCC" Margin="0,0,0,6"/>
+                    <Rectangle x:Name="RectPreview" Height="60" RadiusX="6" RadiusY="6" Stroke="#888"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="30"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="60"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="A" Foreground="#DDD" VerticalAlignment="Center"/>
+            <Slider x:Name="SlA" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
+            <TextBlock x:Name="TxtA" Grid.Row="0" Grid.Column="2" Text="255" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="R" Foreground="#DDD" VerticalAlignment="Center"/>
+            <Slider x:Name="SlR" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
+            <TextBlock x:Name="TxtR" Grid.Row="1" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="G" Foreground="#DDD" VerticalAlignment="Center"/>
+            <Slider x:Name="SlG" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
+            <TextBlock x:Name="TxtG" Grid.Row="2" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="B" Foreground="#DDD" VerticalAlignment="Center"/>
+            <Slider x:Name="SlB" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
+            <TextBlock x:Name="TxtB" Grid.Row="3" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Click="BtnCancel_Click" Margin="0,0,10,0" Width="90"/>
+            <Button Content="OK" Click="BtnOk_Click" Width="90"/>
+        </StackPanel>
+    </Grid>
+</Window>

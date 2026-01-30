@@ -1,0 +1,226 @@
+﻿<Window x:Class="CNC_Improvements_gcode_solids.Utilities.TurnEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Turn Edit Viewer"
+        Width="1400"
+        Height="800"
+        WindowStartupLocation="CenterOwner"
+        Background="#222"
+        Loaded="TurnEditWindow_Loaded">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOP TOOLBAR -->
+        <Border Grid.Row="0"
+                Background="#111"
+                CornerRadius="6"
+                BorderBrush="#444"
+                BorderThickness="1"
+                Padding="8"
+                Margin="0,0,0,8">
+            <DockPanel LastChildFill="True">
+
+                <!-- Left tool group -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    
+                    <ToggleButton x:Name="BtnModePan"
+                                  Content="Pan"
+                                  Width="80"
+                                  Margin="0,0,12,0"
+                                  Click="BtnBtnModePan"/>
+                    <ToggleButton x:Name="BtnModeSelect"
+              Content="Select"
+              IsChecked="True"
+              Width="90"
+              Margin="0,0,6,0"
+              Click="BtnBtnModeSelect"/>
+
+
+
+                </StackPanel>
+
+                <!-- Mid edit group -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+
+
+                    
+                    <Button x:Name="BtnRemove"
+                            Content="Remove Element"
+                            Width="130"
+                            Margin="0,0,6,0"
+                            Click="BtnRemove_Click"/>
+                    
+                    <Button x:Name="BtnReplace"
+                            Content="Replace Element"
+                            Width="130"
+                            Margin="0,0,6,0"
+                            Click="BtnReplace_Click"/>
+                    
+                    <Button x:Name="BtnAddLine"
+                            Content="Add Line"
+                            Width="90"
+                            Margin="0,0,12,0"
+                            Click="BtnAddLine_Click"/>
+                    <Button x:Name="BtnFillet"
+                            Content="Fillet (2)"
+                            Width="100"
+                            Margin="0,0,6,0"
+                            Click="BtnFillet_Click"/>
+                    <Button x:Name="BtnTrim"
+                            Content="Trim (2)"
+                            Width="90"
+                            Margin="0,0,6,0"
+                            Click="BtnTrim_Click"/>
+                   
+                    
+                </StackPanel>
+
+                <!-- Right view/save group -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtHint"
+                               Text="Zoom: mouse wheel"
+                               Foreground="#CCC"
+                               VerticalAlignment="Center"
+                               Margin="0,0,12,0"/>
+                    <Button x:Name="BtnFit"
+                            Content="Fit"
+                            Width="90"
+                            Margin="0,0,12,0"
+                            Click="BtnFit_Click"/>
+                    <Button x:Name="BtnSave"
+                            Content="Save"
+                            Width="90"
+                            Margin="0,0,6,0"
+                            IsEnabled="False"
+                            Click="BtnSave_Click"/>
+                    <Button x:Name="BtnCancel"
+                            Content="Cancel"
+                            Width="90"
+                            Click="BtnCancel_Click"/>
+                </StackPanel>
+
+            </DockPanel>
+        </Border>
+
+        <!-- MAIN AREA -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="360"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Canvas panel -->
+            <Border Grid.Column="0"
+        Background="#111"
+        CornerRadius="6"
+        BorderBrush="#444"
+        BorderThickness="1"
+        ClipToBounds="True"
+        Margin="0,0,8,0">
+                <Grid x:Name="ViewportHost" ClipToBounds="True">
+                    <Canvas x:Name="EditCanvas"
+                Background="#0D0D0D"
+                Focusable="True"
+                ClipToBounds="True"
+                MouseLeftButtonDown="EditCanvas_MouseLeftButtonDown"
+                MouseMove="EditCanvas_MouseMove"
+                MouseLeftButtonUp="EditCanvas_MouseLeftButtonUp"
+                MouseLeave="EditCanvas_MouseLeave"
+                MouseWheel="EditCanvas_MouseWheel"/>
+                </Grid>
+            </Border>
+
+
+            <!-- Right panel -->
+            <Border Grid.Column="1"
+                    Background="#111"
+                    CornerRadius="6"
+                    BorderBrush="#444"
+                    BorderThickness="1"
+                    Padding="10">
+                <StackPanel>
+
+                    <!-- STEP 1 UI: region selection -->
+                    <TextBlock Text="Select the regions to edit"
+                               Foreground="#CCC"
+                               FontWeight="Bold"
+                               Margin="0,0,0,8"/>
+
+                    <ListBox x:Name="LstRegions"
+                             Height="260"
+                             SelectionMode="Extended"
+                             Background="#0D0D0D"
+                             Foreground="#DDD"
+                             BorderBrush="#444"
+                             BorderThickness="1"
+                             FontFamily="Consolas"
+                             FontSize="12"/>
+
+                    <Button x:Name="BtnSubmitRegions"
+                            Content="Submit (Dump to LogWindow)"
+                            Height="32"
+                            Margin="0,8,0,12"
+                            Background="#FF007ACC"
+                            Foreground="White"
+                            FontWeight="Bold"
+                            Click="BtnSubmitRegions_Click"/>
+
+                    <Separator/>
+
+                    <!-- Existing status/selection display -->
+                    <TextBlock Text="Selection"
+                               Foreground="#CCC"
+                               FontWeight="Bold"
+                               Margin="0,12,0,8"/>
+
+                    <TextBlock x:Name="TxtSelected"
+                               Foreground="Yellow"
+                               FontFamily="Consolas"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Text="None"
+                               Margin="0,0,0,10"/>
+
+                    <Separator/>
+
+                    <TextBlock Text="Status"
+                               Foreground="#CCC"
+                               FontWeight="Bold"
+                               Margin="0,10,0,8"/>
+
+                    <TextBlock x:Name="TxtStatus"
+                               Foreground="Yellow"
+                               FontFamily="Consolas"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Text="Mode: Select"/>
+
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- BOTTOM STATUS STRIP -->
+        <Border Grid.Row="2"
+                Background="#111"
+                CornerRadius="6"
+                BorderBrush="#444"
+                BorderThickness="1"
+                Padding="8"
+                Margin="0,8,0,0">
+            <DockPanel>
+                <TextBlock x:Name="TxtFooter"
+                           Height="32"
+                           Foreground="#CCC"
+                           FontFamily="Consolas"
+                           FontSize="12"
+                           Text="(ready)"/>
+            </DockPanel>
+        </Border>
+
+    </Grid>
+</Window>

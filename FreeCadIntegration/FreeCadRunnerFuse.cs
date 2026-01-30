@@ -1,0 +1,133 @@
+﻿using CNC_Improvements_gcode_solids.Properties;
+using System;
+using System.Diagnostics;
+using System.IO;
+
+namespace CNC_Improvements_gcode_solids.FreeCadIntegration
+{
+    internal static class FreeCadRunnerFuse
+    {
+        public static string SaveScript()
+        {
+            string scriptText = FreeCadScriptFuse.BuildScriptText();
+
+
+
+
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            // Unify ALL FreeCAD scripts to the SAME folder as Turning:
+            string scriptDir = Path.Combine(localAppData, "NPC_Gcode_Solids");
+            Directory.CreateDirectory(scriptDir);
+
+
+
+
+
+            string scriptPath = Path.Combine(scriptDir, $"fuse_all_steps_000.py");
+
+            File.WriteAllText(scriptPath, scriptText);
+            return scriptPath;
+        }
+
+
+
+
+
+
+
+
+
+        public static string RunFreeCad(string scriptPath, string workingDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(scriptPath) || !File.Exists(scriptPath))
+                throw new FileNotFoundException("ExportAll fuse Python script not found.", scriptPath);
+
+            // -------------------------------
+            // 4) Locate FreeCADCmd.exe path
+            // -------------------------------
+            string exePath = string.Empty;
+
+            // First check local copy: <AppDir>\FreeCAD\bin\FreeCADCmd.exe
+            try
+            {
+                string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                string localPath = System.IO.Path.Combine(appDir, "FreeCAD", "bin", "FreeCADCmd.exe");
+
+                if (File.Exists(localPath))
+                {
+                    exePath = localPath;
+                }
+                else
+                {
+                    // fallback to configured path
+                    string cfgPath = Settings.Default.FreeCadPath;
+                    if (!string.IsNullOrWhiteSpace(cfgPath) && File.Exists(cfgPath))
+                    {
+                        exePath = cfgPath;
+                    }
+                }
+            }
+            catch
+            {
+                // fallback only to Settings
+                string cfgPath = Settings.Default.FreeCadPath;
+                if (!string.IsNullOrWhiteSpace(cfgPath) && File.Exists(cfgPath))
+                    exePath = cfgPath;
+            }
+
+            // final validation
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+            {
+                throw new InvalidOperationException(
+                    "FreeCADCmd.exe could not be located.\n\n" +
+                    "Tried:\n" +
+                    "  • AppDir\\FreeCAD\\bin\\FreeCADCmd.exe\n" +
+                    "  • Settings.Default.FreeCadPath\n\n" +
+                    "Current setting:\n" + (Settings.Default.FreeCadPath ?? "<null>"));
+            }
+
+
+            if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+                workingDirectory = Path.GetDirectoryName(scriptPath) ?? Environment.CurrentDirectory;
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = $"\"{scriptPath}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = workingDirectory
+            };
+
+            using (var proc = Process.Start(psi))
+            {
+                if (proc == null)
+                    throw new InvalidOperationException("Failed to start FreeCADCmd process for STEP merge.");
+
+                string stdOut = proc.StandardOutput.ReadToEnd();
+                string stdErr = proc.StandardError.ReadToEnd();
+
+                proc.WaitForExit();
+
+                string combinedLog = stdOut ?? "";
+                if (!string.IsNullOrWhiteSpace(stdErr))
+                {
+                    combinedLog += Environment.NewLine +
+                                   "---- STDERR ----" + Environment.NewLine +
+                                   stdErr;
+                }
+
+                if (proc.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        "FreeCADCmd (merge) exited with code " + proc.ExitCode + Environment.NewLine +
+                        combinedLog);
+                }
+
+                return combinedLog;
+            }
+        }
+    }
+}

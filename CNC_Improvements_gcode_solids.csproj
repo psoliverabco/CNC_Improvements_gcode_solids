@@ -1,0 +1,74 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Icon\Gcode_to_Solids_light.ico</ApplicationIcon>
+    
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="NewFolder1\**" />
+    <EmbeddedResource Remove="NewFolder1\**" />
+    <None Remove="NewFolder1\**" />
+    <Page Remove="NewFolder1\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Gcode_converter_UI_image.png" />
+    <None Remove="Icon\Gcode_converter_splash_screen.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Icon\Gcode_to_Solids_light.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Clipper2" Version="1.5.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Gcode_converter_UI_image.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <SplashScreen Include="Icon\Gcode_converter_splash_screen.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </SplashScreen>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Settings.Designer.cs">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bundle FreeCAD with the published folder -->
+    <Content Include="FreeCAD\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <!-- IMPORTANT: Do NOT compile any .cs files that exist inside the bundled FreeCAD tree -->
+    <Compile Remove="FreeCAD\**\*.cs" />
+  </ItemGroup>
+
+  
+  
+</Project>

@@ -1,0 +1,48 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="CNC_Improvements_gcode_solids.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="FreeCadPath" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\Program Files\FreeCAD 0.21\bin\FreeCADCMD.exe</Value>
+    </Setting>
+    <Setting Name="ProfileColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FF00FF00</Value>
+    </Setting>
+    <Setting Name="ProfileWidth" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">1</Value>
+    </Setting>
+    <Setting Name="OffsetColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FFFFA500</Value>
+    </Setting>
+    <Setting Name="OffsetWidth" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">1</Value>
+    </Setting>
+    <Setting Name="ClosingColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FF808080</Value>
+    </Setting>
+    <Setting Name="ClosingWidth" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">1</Value>
+    </Setting>
+    <Setting Name="GraphicTextColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FFFBFF3D</Value>
+    </Setting>
+    <Setting Name="TangentAngTol" Type="System.Single" Scope="User">
+      <Value Profile="(Default)">0.122</Value>
+    </Setting>
+    <Setting Name="SmallSegment" Type="System.Single" Scope="User">
+      <Value Profile="(Default)">0.02</Value>
+    </Setting>
+    <Setting Name="LogWindowShow" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="ClipperInputPolyTol" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">0.005</Value>
+    </Setting>
+    <Setting Name="MinArcPoints" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">10</Value>
+    </Setting>
+    <Setting Name="SnapRad" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">0.1</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>

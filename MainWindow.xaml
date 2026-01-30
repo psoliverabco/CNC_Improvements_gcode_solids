@@ -1,0 +1,713 @@
+﻿<Window x:Class="CNC_Improvements_gcode_solids.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:pages="clr-namespace:CNC_Improvements_gcode_solids.Pages"
+        Title="CNC Improvements Gcode to Solids stp translator "
+        Width="1400"
+        Height="800"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFE6E7E8">
+
+    <Window.Resources>
+
+        <!-- =========================
+             COMBOBOX ITEM (popup rows)
+             ========================= -->
+        <Style x:Key="DarkComboItemStyle" TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="Background" Value="#555"/>
+            <Setter Property="Foreground" Value="#EEE"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#333"/>
+                    <Setter Property="Foreground" Value="#FFF"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="DarkCyan"/>
+                    <Setter Property="Foreground" Value="#FFF"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- =========================
+             COMBOBOX (closed box + popup)
+             NOTE: includes required PART_*
+             ========================= -->
+        <Style x:Key="DarkComboBoxStyle" TargetType="{x:Type ComboBox}">
+            <Setter Property="Foreground" Value="#EEE"/>
+            <Setter Property="Background" Value="#222"/>
+            <Setter Property="BorderBrush" Value="#444"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource DarkComboItemStyle}"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBox}">
+                        <Grid SnapsToDevicePixels="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="28"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Outer border -->
+                            <Border Grid.ColumnSpan="2"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="2"/>
+
+                            <!-- Selection presenter (non-editable) -->
+                            <ContentPresenter x:Name="ContentSite"
+                                              Grid.Column="0"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+
+                            <!-- Editable textbox host (kept for correctness even if not used) -->
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Grid.Column="0"
+                                     Margin="{TemplateBinding Padding}"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Stretch"
+                                     Background="Transparent"
+                                     Foreground="{TemplateBinding Foreground}"
+                                     BorderThickness="0"
+                                     Visibility="Hidden"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}"/>
+
+                            <!-- Drop-down toggle -->
+                            <ToggleButton Grid.Column="1"
+                                          Focusable="False"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                        <Border Background="Transparent">
+                                            <TextBlock Text="▼"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <!-- Popup -->
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Fade">
+                                <Border Background="#111"
+                                        BorderBrush="#444"
+                                        BorderThickness="1"
+                                        CornerRadius="2"
+                                        SnapsToDevicePixels="True">
+                                    <ScrollViewer Margin="0"
+                                                  SnapsToDevicePixels="True"
+                                                  CanContentScroll="True">
+                                        <!-- Force popup list text colour -->
+                                        <ItemsPresenter TextElement.Foreground="#EEE"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+
+        <!-- =========================
+     REGION SET ROW TEMPLATE (ListBox rows)
+     Two tick columns: ViewAll + Export
+     ========================= -->
+
+        <Style x:Key="DarkCheckBoxStyle" TargetType="{x:Type CheckBox}">
+            <Setter Property="Foreground" Value="#EEE"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+
+        <DataTemplate x:Key="RegionSetRowTemplate">
+            <Grid Margin="0" SnapsToDevicePixels="True">
+                <Grid.ColumnDefinitions>
+                    <!-- Tick 1 -->
+                    <ColumnDefinition Width="20"/>
+                    <!-- Tick 2 -->
+                    <ColumnDefinition Width="20"/>
+                    <!-- Name -->
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Tick: Show in View All -->
+                <CheckBox Grid.Column="0"
+                  Style="{StaticResource DarkCheckBoxStyle}"
+                  IsChecked="{Binding ShowInViewAll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                  ToolTip="Show in View All"/>
+
+                <!-- Tick: Export -->
+                <CheckBox Grid.Column="1"
+                  Style="{StaticResource DarkCheckBoxStyle}"
+                  IsChecked="{Binding ExportEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                  ToolTip="Include in Export"/>
+
+                <!-- Name -->
+                <TextBlock Grid.Column="2"
+                   Text="{Binding Name}"
+                   Foreground="#EEE"
+                   VerticalAlignment="Center"
+                   Margin="2,0,0,0"
+                   TextTrimming="CharacterEllipsis"/>
+            </Grid>
+        </DataTemplate>
+
+
+
+
+
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- TOP SELECTOR BAR (above editor only) -->
+            <RowDefinition Height="Auto" MinHeight="110.06"/>
+            <!-- MAIN CONTENT -->
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <!-- LEFT MENU: ~25% -->
+            <ColumnDefinition Width="53*" />
+            <!-- G-CODE EDITOR: ~50% -->
+            <ColumnDefinition Width="164*" />
+            <!-- PAGE CONTENT: ~25% -->
+            <ColumnDefinition Width="60*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- LEFT NAV MENU -->
+
+
+        <Border Grid.Row="0"
+        Grid.RowSpan="2"
+        Grid.Column="0"
+        Background="Navy"
+        CornerRadius="6"
+        BorderBrush="#444"
+        BorderThickness="1"
+        Padding="10"
+        Margin="10,10,0,10">
+
+            <StackPanel Background="Transparent"
+                VerticalAlignment="Top">
+
+
+                <Border BorderBrush="Black"
+        BorderThickness="1"
+        Width="235"
+        Height="155"
+        CornerRadius="60"
+        SnapsToDevicePixels="True">
+                    <Border.Clip>
+                        <!-- Border does NOT clip to CornerRadius by itself.
+             You must explicitly clip it. -->
+                        <RectangleGeometry Rect="0,0,235,155"
+                           RadiusX="40"
+                           RadiusY="40"/>
+                    </Border.Clip>
+
+                    <Image x:Name="image"
+          
+           Stretch="Fill" Source="/Gcode_converter_UI_image.png" />
+                </Border>
+
+
+                <Button x:Name="LoadGcode"
+                Content="Load Gcode File (Append)"
+                Height="37"
+                Margin="0 10 0 10"
+                Background="#FF007ACC"
+                Foreground="White"
+                Click="BtnLoad_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+
+                <Button Content="Add Turn Region"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnAddTurn_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button Content="Add Mill Region"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnAddMill_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button Content="Add Drill Set"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnAddDrill_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button Content="Copy Region/Set"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnCopyRegion"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button x:Name="LoadTransEditor"
+                    Content="Translation Editor"
+                    Height="37"
+                    Margin="0 0 0 10"
+                    Background="#555"
+                    Foreground="White"
+                    Click="BtnLoadTransEditor_Click"
+                    FontSize="15"
+                    FontWeight="Bold"/>
+
+                <Button Content="Delete Selected Set"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#FFCF2929"
+                Foreground="White"
+                Click="BtnDeleteSelected_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button Content="Save Project"
+                Height="37"
+                Margin="0 0 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnSaveProject_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+                <Button Content="Start New or Load Project"
+                Height="37"
+                Margin="0 0 0 0"
+                Background="#555"
+                Foreground="White"
+                Click="BtnLoadProject_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+
+
+                <Button x:Name="BtnSettings"
+                Content="Settings"
+                Height="37"
+                Margin="0 10 0 10"
+                Background="#555"
+                Foreground="White"
+                Click="BtnSettings_Click"
+                FontSize="15"
+                FontWeight="Bold"/>
+
+
+
+
+
+                <Button Height="84"
+        Margin="0 0 0 0"
+        Background="#FF5500"
+        Foreground="White"
+        FontSize="24"
+        FontWeight="Bold"
+        PreviewMouseLeftButtonDown="BtnExportAll_Click">
+                    <TextBlock Text=" Export All   Regions/Sets"
+               TextWrapping="Wrap"
+               TextAlignment="Center"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"/>
+                </Button>
+
+
+
+
+
+            </StackPanel>
+        </Border>
+
+
+
+        <!-- TOP SELECTOR BAR (ONLY ABOVE THE RICHTEXT BOX) -->
+        <Border Grid.Row="0"
+                Grid.Column="1"
+                Background="Navy"
+                CornerRadius="6"
+                BorderBrush="#444"
+                BorderThickness="1"
+                Padding="10"
+                Margin="10,10,10,0">
+
+            <StackPanel>
+
+
+
+                <!-- DROPDOWNS -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- TURN -->
+                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,12,0">
+                        <Button Content="  Edit Turning  "
+                                    Height="40"
+                                    Width="Auto"
+                                    Margin="0 0 0 12"
+                                    Background="#555"
+                                    Foreground="White"
+                                    FontSize="15" 
+                                    FontWeight="Bold"
+                                    PreviewMouseLeftButtonDown="TurnHeader_MouseLeftButtonDown"  
+                                    HorizontalAlignment="Stretch" />
+                        <ListBox x:Name="CmbTurnSets"
+         ItemsSource="{Binding TurnSets}"
+         SelectedItem="{Binding SelectedTurnSet, Mode=TwoWay}"
+         ItemTemplate="{StaticResource RegionSetRowTemplate}"
+         HorizontalAlignment="Stretch"
+         FontSize="15"
+         Background="#555"
+         Foreground="White"
+         FontWeight="Bold"
+         Padding="10,10,10,10"
+         Height="100">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Cut" Click="TurnSets_Cut_Click"/>
+                                    <MenuItem Header="Paste" Click="TurnSets_Paste_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+
+
+                    </StackPanel>
+
+                    <!-- MILL -->
+                    <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,12,0">
+                        <Button Content="  Edit Milling  "
+                                    Height="40"
+                                    Width="Auto"                                
+                                    Margin="0 0 0 12"
+                                    Background="#555"
+                                    Foreground="White"
+                                    FontSize="15" 
+                                    FontWeight="Bold"
+                                    PreviewMouseLeftButtonDown="MillHeader_MouseLeftButtonDown" 
+                                    HorizontalAlignment="Stretch"/>
+
+
+
+                        <ListBox x:Name="CmbMillSets"
+         ItemsSource="{Binding MillSets}"
+         SelectedItem="{Binding SelectedMillSet, Mode=TwoWay}"
+         ItemTemplate="{StaticResource RegionSetRowTemplate}"
+         HorizontalAlignment="Stretch"
+         Background="#555"
+         Foreground="White"
+         FontSize="15"
+         FontWeight="Bold"
+         Padding="10,10,10,10"
+         Height="100">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Cut" Click="MillSets_Cut_Click"/>
+                                    <MenuItem Header="Paste" Click="MillSets_Paste_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+
+
+
+
+
+
+
+
+                    </StackPanel>
+
+                    <!-- DRILL -->
+                    <StackPanel Grid.Column="2" Orientation="Vertical">
+
+                        <Button Content="  Edit Drilling  "
+                                    Height="40"
+                                    Width="Auto"                               
+                                    Margin="0 0 0 12"
+                                    Background="#555"
+                                    Foreground="White"
+                                    FontSize="15" 
+                                    FontWeight="Bold"
+                                    PreviewMouseLeftButtonDown="DrillHeader_MouseLeftButtonDown"
+                                    HorizontalAlignment="Stretch"/>
+
+
+
+                        <ListBox x:Name="CmbDrillSets"
+         ItemsSource="{Binding DrillSets}"
+         SelectedItem="{Binding SelectedDrillSet, Mode=TwoWay}"
+         ItemTemplate="{StaticResource RegionSetRowTemplate}"
+         HorizontalAlignment="Stretch"
+         FontSize="15"
+         Background="#555"
+         Foreground="White"
+         FontWeight="Bold"
+         Padding="10,10,10,10"
+         Height="100">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Cut" Click="DrillSets_Cut_Click"/>
+                                    <MenuItem Header="Paste" Click="DrillSets_Paste_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+
+
+                    </StackPanel>
+                </Grid>
+
+
+                <!-- SELECTED ITEM LABEL -->
+
+                <TextBlock Text="{Binding SelectedSetLabel}"
+           Background="#555"
+           Foreground="White"
+           Height="40"
+           Margin="0,10,0,0"
+           FontFamily="Consolas"
+           FontSize="16"
+           Padding="50,12,0,0"
+           TextWrapping="Wrap"
+           FontWeight="Bold"
+           HorizontalAlignment="Stretch"/>
+
+
+            </StackPanel>
+        </Border>
+
+        <!-- SHARED G-CODE EDITOR (bordered) -->
+        <Border Grid.Row="0"
+        Grid.RowSpan="2"
+        Grid.Column="1"
+       Background="Navy"
+        CornerRadius="6"
+        BorderBrush="#444"
+        BorderThickness="1"
+        Padding="10"
+        Margin="10,240,10,10">
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition Height="Auto" MinHeight="68"/>
+                </Grid.RowDefinitions>
+
+                <RichTextBox x:Name="TxtGcode"
+                 Grid.Row="0"
+                 FontFamily="Consolas"
+                 FontSize="14"
+                 PreviewTextInput="TxtGcode_PreviewTextInput"
+                 DataObject.Pasting="TxtGcode_Pasting"
+                 VerticalScrollBarVisibility="Auto"
+                 AcceptsReturn="True"
+                 AcceptsTab="True"
+                 IsReadOnly="False"
+                 Padding="10,0,10,0"
+                 Background="#EEE"
+                 BorderThickness="0" Margin="0,0,0,49" Grid.RowSpan="2"/>
+
+
+
+
+
+
+                <UniformGrid Grid.Row="1"
+             Rows="1"
+             Columns="9"
+             Margin="0,1,0,0">
+
+
+                    <Button x:Name="test"
+            Content="tttt"
+            Height="35"
+                  Padding="0"        
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="Btntesting"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+
+
+
+                    <Button x:Name="CodeClean"
+            Content="Code Cleen"
+            Height="35"
+                  Padding="0"        
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnCodeClean_Click"
+            FontSize="15"
+            FontWeight="Bold"/>
+                    
+                    
+                    
+                    
+                    
+                    
+                    <Button x:Name="FaptConvert"
+            Content="Fapt Cnvt"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnFapt"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+                    <Button x:Name="LineSplitter"
+            Content="Split Line"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnSplitLine"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+                    <Button x:Name="ArcSplitter"
+            Content="Split Arc"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnSplitArc"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+                    <Button x:Name="Xadd"
+            Content="Add To X"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnXadd"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+                    <Button x:Name="Yadd"
+            Content="Add To Y"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnYadd"
+            FontSize="15"
+            FontWeight="Bold"/>
+
+                    <Button x:Name="Zadd"
+            Content="Add To Z"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            Click="BtnZadd"
+            FontSize="15"
+            FontWeight="Bold"/>
+                    
+                    <Button x:Name="ArcFields"
+            Content="Arc IJK"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            FontSize="15"
+            FontWeight="Bold" Click="BtnArcFields"/>
+                    <Button x:Name="Join"
+                            
+            Content="Reg Join"
+            Height="35"
+            Margin="0,28,0,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            FontSize="15"
+            FontWeight="Bold" Click="BtnRegionJoin"/>
+
+
+                    
+                </UniformGrid>
+
+
+
+
+
+
+
+            </Grid>
+
+
+        </Border>
+
+        <!-- PAGE CONTENT FRAME (bordered) -->
+        <Border Grid.Row="0"
+        Grid.RowSpan="2"
+        Grid.Column="2"
+        Background="Navy"
+        CornerRadius="6"
+        BorderBrush="#444"
+        BorderThickness="1"
+    Padding="3"
+        Margin="2,10,10,10">
+
+            <Frame x:Name="MainFrame"
+           NavigationUIVisibility="Hidden"
+           Background="Navy"
+           BorderThickness="0"/>
+        </Border>
+
+    </Grid>
+</Window>

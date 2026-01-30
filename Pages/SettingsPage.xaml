@@ -1,0 +1,190 @@
+﻿<Page x:Class="CNC_Improvements_gcode_solids.Pages.SettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Background="#222">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Settings"
+                   Foreground="#DDD"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,10"/>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- FREECAD -->
+                <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="FreeCAD" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="120"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="FreeCadPath" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtFreeCadPath" Grid.Column="1" Margin="8,0,8,0" />
+                            <Button Grid.Column="2" Content="Browse..." Click="BtnBrowseFreeCad_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- COLORS -->
+                <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10" Margin="0,0,0,5">
+                    <StackPanel>
+                        <TextBlock Text="Viewer Colours (#AARRGGBB)" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,5"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="55"/>
+                                <ColumnDefinition Width="85"/>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="50"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- ProfileColor -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Profile" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtProfileColor" Grid.Row="0" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
+                            <Button Grid.Row="0" Grid.Column="2" Content="Pick..." Tag="TxtProfileColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Rectangle x:Name="RectProfileColor" Grid.Row="0" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+
+                            <!-- OffsetColor -->
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Offset" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtOffsetColor" Grid.Row="1" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
+                            <Button Grid.Row="1" Grid.Column="2" Content="Pick..." Tag="TxtOffsetColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Rectangle x:Name="RectOffsetColor" Grid.Row="1" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+
+                            <!-- ClosingColor -->
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Closing" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtClosingColor" Grid.Row="2" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
+                            <Button Grid.Row="2" Grid.Column="2" Content="Pick..." Tag="TxtClosingColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Rectangle x:Name="RectClosingColor" Grid.Row="2" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+
+                            <!-- GraphicTextColor -->
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="GraphText" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtGraphicTextColor" Grid.Row="3" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
+                            <Button Grid.Row="3" Grid.Column="2" Content="Pick..." Tag="TxtGraphicTextColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Rectangle x:Name="RectGraphicTextColor" Grid.Row="3" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+                        </Grid>
+
+                        <TextBlock Margin="0,6,0,0"
+                                   Foreground="#AAA"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   Text="Format #AARRGGBB (example #FF00FF00)"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- WIDTHS -->
+                <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="Line Widths" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="ProfileWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtProfileWidth" Grid.Row="0" Grid.Column="1" Margin="8,4,0,4"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="OffsetWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtOffsetWidth" Grid.Row="1" Grid.Column="1" Margin="8,4,0,4"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ClosingWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtClosingWidth" Grid.Row="2" Grid.Column="1" Margin="8,4,0,4"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- TOLERANCES -->
+                <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="Tolerances / Thresholds" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="TangentAngTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtTangentAngTol" Grid.Row="0" Grid.Column="1" Margin="8,4,0,4"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="SmallSegment" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtSmallSegment" Grid.Row="1" Grid.Column="1" Margin="8,4,0,4"/>
+
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ClipperPolyTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtClipperPolyTol" Grid.Row="2" Grid.Column="1" Margin="8,4,0,4"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="MinArcPoints" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtMinArcPoints" Grid.Row="3" Grid.Column="1" Margin="8,4,0,4"/>
+
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="SnapTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtSnapTol" Grid.Row="4" Grid.Column="1" Margin="8,4,0,4"/>
+
+
+
+
+
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- MISC -->
+                <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10">
+                    <StackPanel>
+                        <TextBlock Text="Misc" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+                        <CheckBox x:Name="ChkLogWindowShow"
+                                  Content="LogWindowShow"
+                                  Foreground="#DDD"
+                                  Margin="0,2,0,2"/>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- BOTTOM BUTTONS -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Reset to Defaults" Click="BtnResetDefaults_Click" Margin="0,0,10,0"/>
+            <Button Content="Save" Click="BtnSaveSettings_Click" Margin="0,0,10,0"/>
+            <Button Content="Close" Click="BtnClose_Click"/>
+        </StackPanel>
+    </Grid>
+</Page>
