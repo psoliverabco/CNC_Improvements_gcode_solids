@@ -3,6 +3,37 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+
+
+
+
+# =========================
+# FreeCAD (local huge files)
+# =========================
+
+# Folder name (matches Freecad / FreeCAD / FREECAD etc)
+[Ff]ree[Cc]ad/
+**/[Ff]ree[Cc]ad/
+
+# Common FreeCAD/CAD outputs anywhere
+*.FCStd
+*.FCStd1
+*.step
+*.stp
+*.iges
+*.igs
+*.brep
+*.brp
+*.stl
+*.obj
+
+
+
+
+
+
+
+
 # User-specific files
 *.rsuser
 *.suo

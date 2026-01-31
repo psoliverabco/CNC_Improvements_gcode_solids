@@ -1,4 +1,7 @@
-﻿using Microsoft.Win32;
+﻿// hey chat gpt.....whats up
+
+
+using Microsoft.Win32;
 using CNC_Improvements_gcode_solids.Pages;
 using CNC_Improvements_gcode_solids.SetManagement;
 using CNC_Improvements_gcode_solids.Utilities;
