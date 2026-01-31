@@ -28,7 +28,7 @@ namespace CNC_Improvements_gcode_solids
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
 
-//did this get in
+//did this get in.
 
         // Tracks STEP files created during Export All (authoritative list, no scanning)
         public List<string> ExportAllCreatedStepFiles = new List<string>();
