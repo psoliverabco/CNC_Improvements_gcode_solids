@@ -87,7 +87,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             for (int i = 0; i < regionGcodeLinesOnly.Count; i++)
             {
                 string raw = regionGcodeLinesOnly[i] ?? "";
-                string norm = TextSearching.NormalizeTextLineAsIs(raw);
+                string norm = GeneralNormalizers.NormalizeTextLineAsIs(raw);
 
                 // skip empties (prevents marker keys becoming blank)
                 if (string.IsNullOrWhiteSpace(norm))
@@ -192,10 +192,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (HasAxisTokenWithNumber(s, 'Z')) lastZ = i;
             }
 
-            rs.PageSnapshot.Values[KEY_StartXLine] = (firstX >= 0) ? TextSearching.NormalizeTextLineAsIs(lines[firstX]) : "";
-            rs.PageSnapshot.Values[KEY_StartZLine] = (firstZ >= 0) ? TextSearching.NormalizeTextLineAsIs(lines[firstZ]) : "";
-            rs.PageSnapshot.Values[KEY_EndXLine] = (lastX >= 0) ? TextSearching.NormalizeTextLineAsIs(lines[lastX]) : "";
-            rs.PageSnapshot.Values[KEY_EndZLine] = (lastZ >= 0) ? TextSearching.NormalizeTextLineAsIs(lines[lastZ]) : "";
+            rs.PageSnapshot.Values[KEY_StartXLine] = (firstX >= 0) ? GeneralNormalizers.NormalizeTextLineAsIs(lines[firstX]) : "";
+            rs.PageSnapshot.Values[KEY_StartZLine] = (firstZ >= 0) ? GeneralNormalizers.NormalizeTextLineAsIs(lines[firstZ]) : "";
+            rs.PageSnapshot.Values[KEY_EndXLine] = (lastX >= 0) ? GeneralNormalizers.NormalizeTextLineAsIs(lines[lastX]) : "";
+            rs.PageSnapshot.Values[KEY_EndZLine] = (lastZ >= 0) ? GeneralNormalizers.NormalizeTextLineAsIs(lines[lastZ]) : "";
         }
 
         // No regex. Looks for axis letter followed by optional spaces then a number char.

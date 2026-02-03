@@ -351,80 +351,88 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (set == null)
                 return;
 
-            EnsureSelectedMillSnapshot(set);
-
             var lines = GetGcodeLines();
-            var snap = set.PageSnapshot!.Values;
 
-            // Ensure per-set RegionUid (used for #uid,local# anchors)
-            if (!snap.TryGetValue(KEY_REGION_UID, out string? uid) || string.IsNullOrWhiteSpace(uid))
+            // Raw marker lines (absolute indices)
+            string? planeRaw = (planeZIndex >= 0 && planeZIndex < lines.Count) ? lines[planeZIndex] : null;
+            string? sxRaw = (startXIndex >= 0 && startXIndex < lines.Count) ? lines[startXIndex] : null;
+            string? syRaw = (startYIndex >= 0 && startYIndex < lines.Count) ? lines[startYIndex] : null;
+            string? exRaw = (endXIndex >= 0 && endXIndex < lines.Count) ? lines[endXIndex] : null;
+            string? eyRaw = (endYIndex >= 0 && endYIndex < lines.Count) ? lines[endYIndex] : null;
+
+            var snapDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            // Always persist marker key TEXTs (even when region span is incomplete)
+            if (!string.IsNullOrWhiteSpace(planeRaw))
+                snapDefaults[KEY_PLANEZ_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(planeRaw);
+            if (!string.IsNullOrWhiteSpace(sxRaw))
+                snapDefaults[KEY_STARTX_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(sxRaw);
+            if (!string.IsNullOrWhiteSpace(syRaw))
+                snapDefaults[KEY_STARTY_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(syRaw);
+            if (!string.IsNullOrWhiteSpace(exRaw))
+                snapDefaults[KEY_ENDX_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(exRaw);
+            if (!string.IsNullOrWhiteSpace(eyRaw))
+                snapDefaults[KEY_ENDY_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(eyRaw);
+
+            // If we have a valid span (StartX/StartY + EndX/EndY), rebuild RegionLines now via builder.
+            bool haveStart = (startXIndex >= 0 && startYIndex >= 0);
+            bool haveEnd = (endXIndex >= 0 && endYIndex >= 0);
+
+            if (haveStart && haveEnd)
             {
-                uid = BuiltRegionNormalizers.NewUidN();
-                snap[KEY_REGION_UID] = uid;
-            }
+                int regionStartAbs = MinNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
+                int regionEndAbs = MaxNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
 
-            // Compute current region start/end (only valid when markers exist)
-            int regionStart = -1;
-            int regionEnd = -1;
 
-            int sx = startXIndex;
-            int sy = startYIndex;
-            int ex = endXIndex;
-            int ey = endYIndex;
-
-            if ((sx >= 0 || sy >= 0) && (ex >= 0 || ey >= 0))
-            {
-                if (sx >= 0 && sy >= 0) regionStart = Math.Min(sx, sy);
-                else regionStart = (sx >= 0) ? sx : sy;
-
-                if (ex >= 0 && ey >= 0) regionEnd = Math.Max(ex, ey);
-                else regionEnd = (ex >= 0) ? ex : ey;
-
-                if (regionStart < 0 || regionEnd < regionStart)
+                if (regionStartAbs >= 0 && regionEndAbs >= regionStartAbs && regionEndAbs < lines.Count)
                 {
-                    regionStart = -1;
-                    regionEnd = -1;
+                    var region = lines.GetRange(regionStartAbs, regionEndAbs - regionStartAbs + 1);
+
+                    int LocalOrMinus1(int absIdx)
+                    {
+                        if (absIdx < 0) return -1;
+                        int local = absIdx - regionStartAbs;
+                        if (local < 0 || local >= region.Count) return -1;
+                        return local;
+                    }
+
+                    int planeLocal = LocalOrMinus1(planeZIndex);
+                    int sxLocal = LocalOrMinus1(startXIndex);
+                    int syLocal = LocalOrMinus1(startYIndex);
+                    int exLocal = LocalOrMinus1(endXIndex);
+                    int eyLocal = LocalOrMinus1(endYIndex);
+
+                    // PlaneZ may be outside the region span. If outside, keep the stored key text
+                    // from snapDefaults and do NOT pass a local PlaneZ index.
+                    int? planeLocalOrNull = (planeLocal >= 0) ? planeLocal : (int?)null;
+
+                    BuildMillRegion.EditExisting(
+                        set,
+                        regionLines: region,
+                        planeZIndex: planeLocalOrNull,
+                        startXIndex: (sxLocal >= 0) ? sxLocal : (int?)null,
+                        startYIndex: (syLocal >= 0) ? syLocal : (int?)null,
+                        endXIndex: (exLocal >= 0) ? exLocal : (int?)null,
+                        endYIndex: (eyLocal >= 0) ? eyLocal : (int?)null,
+                        snapshotDefaults: snapDefaults
+                        
+                    );
+
+                    ResolveAndUpdateMillStatus(set, lines);
+                    return;
                 }
             }
 
-            string StoreWithOptionalAnchor(int idx, string existingFallback)
-            {
-                if (idx < 0 || idx >= lines.Count)
-                    return existingFallback;
+            // No valid span yet: just persist keys (builder-only)
+            BuildMillRegion.EditExisting(
+                set,
+                snapshotDefaults: snapDefaults
+                
+            );
 
-                string norm = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(lines[idx]);
-
-                // If this marker lies inside a valid region span, anchor it as #uid,local#
-                if (regionStart >= 0 && regionEnd >= regionStart && idx >= regionStart && idx <= regionEnd)
-                {
-                    int local = (idx - regionStart) + 1; // 1-based within region
-                    return BuiltRegionNormalizers.BuildAnchoredLine(uid!, local, norm);
-                }
-
-                // Otherwise store un-anchored (still normalized)
-                return norm;
-            }
-
-            snap[KEY_PLANEZ_TEXT] = StoreWithOptionalAnchor(
-                planeZIndex,
-                snap.TryGetValue(KEY_PLANEZ_TEXT, out var v0) ? v0 : "");
-
-            snap[KEY_STARTX_TEXT] = StoreWithOptionalAnchor(
-                startXIndex,
-                snap.TryGetValue(KEY_STARTX_TEXT, out var v1) ? v1 : "");
-
-            snap[KEY_STARTY_TEXT] = StoreWithOptionalAnchor(
-                startYIndex,
-                snap.TryGetValue(KEY_STARTY_TEXT, out var v2) ? v2 : "");
-
-            snap[KEY_ENDX_TEXT] = StoreWithOptionalAnchor(
-                endXIndex,
-                snap.TryGetValue(KEY_ENDX_TEXT, out var v3) ? v3 : "");
-
-            snap[KEY_ENDY_TEXT] = StoreWithOptionalAnchor(
-                endYIndex,
-                snap.TryGetValue(KEY_ENDY_TEXT, out var v4) ? v4 : "");
+            ResolveAndUpdateMillStatus(set, lines);
         }
+
 
 
 
@@ -436,18 +444,21 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (set == null)
                 return;
 
-            EnsureSelectedMillSnapshot(set);
+            // Route ALL writes through the builder
+            BuildMillRegion.EditExisting(
+                set,
+                txtToolDia: TxtToolDia?.Text ?? "",
+                txtToolLen: TxtToolLen?.Text ?? "",
+                fuseAll: (Fuseall?.IsChecked == true) ? "1" : "0",
+                clipper: (Clipper?.IsChecked == true) ? "1" : "0",
+                removeSplitter: (RemoveSplitter?.IsChecked == true) ? "1" : "0",
+                clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0"
+                
+            );
 
-            var snap = set.PageSnapshot!.Values;
-
-            snap[KEY_TOOL_DIA] = TxtToolDia?.Text ?? "";
-            snap[KEY_TOOL_LEN] = TxtToolLen?.Text ?? "";
-
-            snap[KEY_FUSEALL] = (Fuseall?.IsChecked == true) ? "1" : "0";
-            snap[KEY_CLIPPER] = (Clipper?.IsChecked == true) ? "1" : "0";
-            snap[KEY_REMOVE_SPLITTER] = (RemoveSplitter?.IsChecked == true) ? "1" : "0";
-            snap[KEY_CLIPPER_ISLAND] = (ClipperIsland?.IsChecked == true) ? "1" : "0";
+            ResolveAndUpdateMillStatus(set, GetGcodeLines());
         }
+
 
 
         // -------------------------
@@ -569,13 +580,8 @@ namespace CNC_Improvements_gcode_solids.Pages
                 return;
             }
 
-            int regionStartAbs = -1;
-            if (startXIndex >= 0 && startYIndex >= 0)
-                regionStartAbs = Math.Min(startXIndex, startYIndex);
-            else if (startXIndex >= 0)
-                regionStartAbs = startXIndex;
-            else
-                regionStartAbs = startYIndex;
+            // regionRaw now includes PlaneZ too, so regionStartAbs MUST match the expanded start
+            int regionStartAbs = MinNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
 
             if (regionStartAbs < 0)
             {
@@ -583,6 +589,7 @@ namespace CNC_Improvements_gcode_solids.Pages
                 ResolveAndUpdateMillStatus(set, allLines);
                 return;
             }
+
 
             // Convert absolute editor indices -> 0-based indices into regionRaw
             int LocalOrMinus1(int absIdx)
@@ -645,21 +652,12 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (endXIndex < 0 && endYIndex < 0)
                 return new List<string>();
 
-            int start = -1;
-            if (startXIndex >= 0 && startYIndex >= 0)
-                start = (startXIndex < startYIndex) ? startXIndex : startYIndex;
-            else if (startXIndex >= 0)
-                start = startXIndex;
-            else
-                start = startYIndex;
+            int start = MinNonNeg(startXIndex, startYIndex);
+            int end = MaxNonNeg(endXIndex, endYIndex);
 
-            int end = -1;
-            if (endXIndex >= 0 && endYIndex >= 0)
-                end = (endXIndex > endYIndex) ? endXIndex : endYIndex;
-            else if (endXIndex >= 0)
-                end = endXIndex;
-            else
-                end = endYIndex;
+            // Expand to include PlaneZ marker if set (before/inside/after)
+            start = MinNonNeg(start, planeZIndex);
+            end = MaxNonNeg(end, planeZIndex);
 
             if (start < 0 || end < 0)
                 return new List<string>();
@@ -875,21 +873,9 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             rtb.Document.Blocks.Clear();
 
-            int regionStart = -1;
-            if (startXIndex >= 0 && startYIndex >= 0)
-                regionStart = (startXIndex < startYIndex) ? startXIndex : startYIndex;
-            else if (startXIndex >= 0)
-                regionStart = startXIndex;
-            else if (startYIndex >= 0)
-                regionStart = startYIndex;
+            int regionStart = MinNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
+            int regionEnd = MaxNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
 
-            int regionEnd = -1;
-            if (endXIndex >= 0 && endYIndex >= 0)
-                regionEnd = (endXIndex > endYIndex) ? endXIndex : endYIndex;
-            else if (endXIndex >= 0)
-                regionEnd = endXIndex;
-            else if (endYIndex >= 0)
-                regionEnd = endYIndex;
 
             Debug.WriteLine("renum firedmill");
 
@@ -985,7 +971,7 @@ namespace CNC_Improvements_gcode_solids.Pages
 
 
 
-        
+
 
 
         /// <summary>
@@ -1483,21 +1469,14 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (endXIndex < 0 && endYIndex < 0)
                 return new List<string>();
 
-            int start = -1;
-            if (startXIndex >= 0 && startYIndex >= 0)
-                start = (startXIndex < startYIndex) ? startXIndex : startYIndex;
-            else if (startXIndex >= 0)
-                start = startXIndex;
-            else
-                start = startYIndex;
+            int start = MinNonNeg(startXIndex, startYIndex);
+            int end = MaxNonNeg(endXIndex, endYIndex);
 
-            int end = -1;
-            if (endXIndex >= 0 && endYIndex >= 0)
-                end = (endXIndex > endYIndex) ? endXIndex : endYIndex;
-            else if (endXIndex >= 0)
-                end = endXIndex;
-            else
-                end = endYIndex;
+            // Expand to include PlaneZ marker if set (before/inside/after)
+            start = MinNonNeg(start, planeZIndex);
+            end = MaxNonNeg(end, planeZIndex);
+
+            
 
             if (start < 0 || end < 0)
                 return new List<string>();
@@ -2542,12 +2521,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
 
         private bool TryGetSetRegionRangeByMarkers(
-    RegionSet set,
-    List<string> allLines,
-    out int regionStartIndex,
-    out int regionEndIndex,
-    out int startXIdx,
-    out int startYIdx)
+            RegionSet set,
+            List<string> allLines,
+            out int regionStartIndex,
+            out int regionEndIndex,
+            out int startXIdx,
+            out int startYIdx)
         {
             regionStartIndex = -1;
             regionEndIndex = -1;
@@ -2557,42 +2536,84 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             if (set == null || allLines == null || allLines.Count == 0)
                 return false;
 
-            string sxText = GetSnapshotOrDefault(set, KEY_STARTX_TEXT, "");
-            string syText = GetSnapshotOrDefault(set, KEY_STARTY_TEXT, "");
-            string exText = GetSnapshotOrDefault(set, KEY_ENDX_TEXT, "");
-            string eyText = GetSnapshotOrDefault(set, KEY_ENDY_TEXT, "");
+            // Resolve start/end markers (required for region span)
+            int sx = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_STARTX_TEXT, ""));
+            int sy = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_STARTY_TEXT, ""));
+            int ex = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_ENDX_TEXT, ""));
+            int ey = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_ENDY_TEXT, ""));
 
-            int sx = FindIndexByMarkerText(sxText);
-            int sy = FindIndexByMarkerText(syText);
-            int ex = FindIndexByMarkerText(exText);
-            int ey = FindIndexByMarkerText(eyText);
-
-            // For geometry we REQUIRE both start X and start Y markers
-            if (sx < 0 || sy < 0)
+            if (sx < 0 || sy < 0 || ex < 0 || ey < 0)
                 return false;
 
-            // For region range we REQUIRE both end markers
-            if (ex < 0 || ey < 0)
-                return false;
+            // --------------------
+            // GEOMETRY span (unchanged): Start/End XY only
+            // --------------------
+            int geomStart = Math.Min(sx, sy);
+            int geomEnd = Math.Max(ex, ey);
 
-            int start = Math.Min(sx, sy);
-            int end = Math.Max(ex, ey);
+            if (geomEnd < geomStart) return false;
+            if (geomStart < 0 || geomEnd < 0) return false;
+            if (geomStart >= allLines.Count || geomEnd >= allLines.Count) return false;
 
-            if (start < 0 || end < 0)
-                return false;
-
-            if (end < start)
-                return false;
-
-            if (start >= allLines.Count || end >= allLines.Count)
-                return false;
-
-            regionStartIndex = start;
-            regionEndIndex = end;
+            regionStartIndex = geomStart;
+            regionEndIndex = geomEnd;
             startXIdx = sx;
             startYIdx = sy;
+
+            // --------------------
+            // STORAGE span (NEW): expand to include PlaneZ if it exists
+            // --------------------
+            int pz = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_PLANEZ_TEXT, ""));
+
+            int storeStart = MinNonNeg(geomStart, pz);
+            int storeEnd = MaxNonNeg(geomEnd, pz);
+
+            if (storeStart < 0 || storeEnd < storeStart || storeEnd >= allLines.Count)
+                return false;
+
+            var regionForStore = allLines.GetRange(storeStart, storeEnd - storeStart + 1);
+
+            // locals must be based on storeStart
+            int LocalOrMinus1(int absIdx)
+            {
+                if (absIdx < 0) return -1;
+                int local = absIdx - storeStart;
+                if (local < 0 || local >= regionForStore.Count) return -1;
+                return local;
+            }
+
+            int sxLocal = LocalOrMinus1(sx);
+            int syLocal = LocalOrMinus1(sy);
+            int exLocal = LocalOrMinus1(ex);
+            int eyLocal = LocalOrMinus1(ey);
+            int pzLocal = LocalOrMinus1(pz);
+
+            // If for some reason pz couldn't be mapped, preserve key text (fallback)
+            Dictionary<string, string>? snapDefaults = null;
+            if (pz >= 0 && pz < allLines.Count && pzLocal < 0)
+            {
+                snapDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                snapDefaults[KEY_PLANEZ_TEXT] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(allLines[pz] ?? "");
+            }
+
+            // Rebuild the set using the SAME canonical builder path,
+            // but with RegionLines expanded to include PlaneZ.
+            BuildMillRegion.EditExisting(
+                set,
+                regionLines: regionForStore,
+                planeZIndex: (pzLocal >= 0) ? pzLocal : (int?)null,
+                startXIndex: (sxLocal >= 0) ? sxLocal : (int?)null,
+                startYIndex: (syLocal >= 0) ? syLocal : (int?)null,
+                endXIndex: (exLocal >= 0) ? exLocal : (int?)null,
+                endYIndex: (eyLocal >= 0) ? eyLocal : (int?)null,
+                snapshotDefaults: snapDefaults
+            );
+
+            ResolveAndUpdateMillStatus(set, allLines);
             return true;
+
         }
+
 
         private List<GeoMove> BuildGeometryFromGcode_ForSetViewAll(
     List<string> regionLines,
@@ -2732,7 +2753,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
 
 
-        
+
 
 
 
@@ -2958,19 +2979,49 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             set.ResolvedEndLine = end;     // 0-based
         }
 
-        private static int MinNonNeg(int a, int b)
+        // Min/Max across MANY indices, ignoring negatives (-1 = "unset")
+        private static int MinNonNeg(params int[] values)
         {
-            if (a < 0) return b;
-            if (b < 0) return a;
-            return Math.Min(a, b);
+            int min = int.MaxValue;
+            bool any = false;
+
+            if (values != null)
+            {
+                for (int i = 0; i < values.Length; i++)
+                {
+                    int v = values[i];
+                    if (v >= 0)
+                    {
+                        any = true;
+                        if (v < min) min = v;
+                    }
+                }
+            }
+
+            return any ? min : -1;
         }
 
-        private static int MaxNonNeg(int a, int b)
+        private static int MaxNonNeg(params int[] values)
         {
-            if (a < 0) return b;
-            if (b < 0) return a;
-            return Math.Max(a, b);
+            int max = int.MinValue;
+            bool any = false;
+
+            if (values != null)
+            {
+                for (int i = 0; i < values.Length; i++)
+                {
+                    int v = values[i];
+                    if (v >= 0)
+                    {
+                        any = true;
+                        if (v > max) max = v;
+                    }
+                }
+            }
+
+            return any ? max : -1;
         }
+
 
 
         private bool TryGetToolDiaForSet(RegionSet set, out double toolDia)

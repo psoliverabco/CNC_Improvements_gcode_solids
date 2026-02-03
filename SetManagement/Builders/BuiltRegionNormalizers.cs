@@ -42,6 +42,11 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
             return sb.ToString().ToUpperInvariant();
         }
 
+
+        
+
+
+
         public static string BuildAnchoredLine(string uidN, int localIndex1Based, string normalizedGcodeAndEndTag)
         {
             if (string.IsNullOrWhiteSpace(uidN))

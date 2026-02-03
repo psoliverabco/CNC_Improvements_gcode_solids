@@ -4386,143 +4386,157 @@ namespace CNC_Improvements_gcode_solids
 
 
         private void BtnCodeClean_Click(object sender, RoutedEventArgs e)
-{
-    try
-    {
-        // One-shot: TURN + MILL + DRILL
-        bool any =
-            (TurnSets != null && TurnSets.Count > 0) ||
-            (MillSets != null && MillSets.Count > 0) ||
-            (DrillSets != null && DrillSets.Count > 0);
-
-        if (!any)
         {
-            MessageBox.Show("No TURN/MILL/DRILL sets exist.", "Code Cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        // ============================================================
-        // BEFORE DUMP (read-only): show snapshot keys + RegionLines EXACT
-        // ============================================================
-        var sb = new System.Text.StringBuilder(32768);
-
-        sb.AppendLine("=== CODE CLEANUP - TURN + MILL + DRILL ===");
-        sb.AppendLine("BEFORE (exact SetManager contents: PageSnapshot.Values + RegionLines)");
-        sb.AppendLine("");
-
-        void DumpSets(string title, System.Collections.Generic.IList<CNC_Improvements_gcode_solids.SetManagement.RegionSet> sets)
-        {
-            sb.AppendLine($"--- {title} ---");
-
-            if (sets == null || sets.Count == 0)
+            try
             {
-                sb.AppendLine($"No {title} sets.");
-                sb.AppendLine();
-                return;
-            }
+                // One-shot: TURN + MILL + DRILL
+                bool any =
+                    (TurnSets != null && TurnSets.Count > 0) ||
+                    (MillSets != null && MillSets.Count > 0) ||
+                    (DrillSets != null && DrillSets.Count > 0);
 
-            for (int i = 0; i < sets.Count; i++)
-            {
-                var set = sets[i];
-                if (set == null) continue;
-
-                string name = (set.Name ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                    name = $"{title}_SET_{i + 1}";
-
-                sb.AppendLine($"----- {title} SET {i + 1}/{sets.Count}: {name} -----");
-
-                sb.AppendLine("SNAPSHOT KEYS (PageSnapshot.Values):");
-                if (set.PageSnapshot?.Values != null && set.PageSnapshot.Values.Count > 0)
+                if (!any)
                 {
-                    foreach (var kv in set.PageSnapshot.Values.OrderBy(k => k.Key, StringComparer.Ordinal))
-                        sb.AppendLine($"  {kv.Key} = {kv.Value}");
-                }
-                else
-                {
-                    sb.AppendLine("  (none)");
+                    MessageBox.Show("No TURN/MILL/DRILL sets exist.", "Code Cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
                 }
 
+                // ============================================================
+                // BEFORE DUMP (read-only): show snapshot keys + RegionLines EXACT
+                // ============================================================
+                var sb = new System.Text.StringBuilder(32768);
+
+                sb.AppendLine("=== CODE CLEANUP - TURN + MILL + DRILL ===");
+                sb.AppendLine("BEFORE (exact SetManager contents: PageSnapshot.Values + RegionLines)");
                 sb.AppendLine("");
-                sb.AppendLine("RegionLines (as stored):");
-                sb.AppendLine("------------------------------------------");
 
-                if (set.RegionLines != null && set.RegionLines.Count > 0)
+                void DumpSets(string title, System.Collections.Generic.IList<CNC_Improvements_gcode_solids.SetManagement.RegionSet> sets)
                 {
-                    for (int k = 0; k < set.RegionLines.Count; k++)
-                        sb.AppendLine(set.RegionLines[k] ?? "");
-                }
-                else
-                {
-                    sb.AppendLine("(none)");
+                    sb.AppendLine($"--- {title} ---");
+
+                    if (sets == null || sets.Count == 0)
+                    {
+                        sb.AppendLine($"No {title} sets.");
+                        sb.AppendLine();
+                        return;
+                    }
+
+                    for (int i = 0; i < sets.Count; i++)
+                    {
+                        var set = sets[i];
+                        if (set == null) continue;
+
+                        string name = (set.Name ?? "").Trim();
+                        if (string.IsNullOrWhiteSpace(name))
+                            name = $"{title}_SET_{i + 1}";
+
+                        sb.AppendLine($"----- {title} SET {i + 1}/{sets.Count}: {name} -----");
+
+                        sb.AppendLine("SNAPSHOT KEYS (PageSnapshot.Values):");
+                        if (set.PageSnapshot?.Values != null && set.PageSnapshot.Values.Count > 0)
+                        {
+                            foreach (var kv in set.PageSnapshot.Values.OrderBy(k => k.Key, StringComparer.Ordinal))
+                                sb.AppendLine($"  {kv.Key} = {kv.Value}");
+                        }
+                        else
+                        {
+                            sb.AppendLine("  (none)");
+                        }
+
+                        sb.AppendLine("");
+                        sb.AppendLine("RegionLines (as stored):");
+                        sb.AppendLine("------------------------------------------");
+
+                        if (set.RegionLines != null && set.RegionLines.Count > 0)
+                        {
+                            for (int k = 0; k < set.RegionLines.Count; k++)
+                                sb.AppendLine(set.RegionLines[k] ?? "");
+                        }
+                        else
+                        {
+                            sb.AppendLine("(none)");
+                        }
+
+                        sb.AppendLine("------------------------------------------");
+                        sb.AppendLine($"----- END {title} SET: {name} -----");
+                        sb.AppendLine("");
+                    }
+
+                    sb.AppendLine();
                 }
 
-                sb.AppendLine("------------------------------------------");
-                sb.AppendLine($"----- END {title} SET: {name} -----");
+                DumpSets("TURN", TurnSets);
+                DumpSets("MILL", MillSets);
+                DumpSets("DRILL", DrillSets);
+
+                // ============================================================
+                // APPLY CLEANUP (in-place) + get NEW editor text
+                // ============================================================
+                sb.AppendLine("============================================================");
+                sb.AppendLine("APPLY CLEANUP (BuildAndApplyAllCleanup updates sets in-place)");
+                sb.AppendLine("============================================================");
                 sb.AppendLine("");
-            }
 
-            sb.AppendLine();
-        }
+                string newEditorText;
+                string cleanupReport = CNC_Improvements_gcode_solids.Utilities.CodeCleanup.BuildAndApplyAllCleanup(
+                    TurnSets,
+                    MillSets,
+                    DrillSets,
+                    out newEditorText);
 
-        DumpSets("TURN", TurnSets);
-        DumpSets("MILL", MillSets);
-        DumpSets("DRILL", DrillSets);
+                sb.AppendLine(cleanupReport);
 
-        // ============================================================
-        // APPLY CLEANUP (in-place) + get NEW editor text
-        // ============================================================
-        sb.AppendLine("============================================================");
-        sb.AppendLine("APPLY CLEANUP (BuildAndApplyAllCleanup updates sets in-place)");
-        sb.AppendLine("============================================================");
-        sb.AppendLine("");
+                // ============================================================
+                // IMPORTANT: NO SEARCH / NO RE-POINTING
+                // - Do NOT match marker text or gcode text.
+                // - Snapshot keys must remain positional (#uid,N#) as produced by CodeCleanup.
+                // ============================================================
 
-        string newEditorText;
-        string cleanupReport = CNC_Improvements_gcode_solids.Utilities.CodeCleanup.BuildAndApplyAllCleanup(
-            TurnSets,
-            MillSets,
-            DrillSets,
-            out newEditorText);
-
-        sb.AppendLine(cleanupReport);
-
-        // ============================================================
-        // REPLACE EDITOR TEXT + REBUILD GcodeLines MODEL
-        // ============================================================
-        if (GcodeEditor != null)
-        {
-            // Replace the RichTextBox content with plain text blocks produced by cleanup
-            GcodeEditor.Document.Blocks.Clear();
-            GcodeEditor.Document.Blocks.Add(new Paragraph(new Run(newEditorText)) { Margin = new Thickness(0) });
-        }
-
-        // Rebuild the backing model list used everywhere else
-        if (GcodeLines != null)
-        {
-            GcodeLines.Clear();
-
-            string allText = (newEditorText ?? "").Replace("\r\n", "\n");
-            using (var reader = new System.IO.StringReader(allText))
-            {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
+                // ============================================================
+                // REPLACE EDITOR TEXT + REBUILD GcodeLines MODEL
+                // ============================================================
+                if (GcodeEditor != null)
                 {
-                    // keep line as-is (no "1234:" prefix here)
-                    GcodeLines.Add(line);
+                    GcodeEditor.Document.Blocks.Clear();
+                    GcodeEditor.Document.Blocks.Add(new Paragraph(new Run(newEditorText)) { Margin = new Thickness(0) });
                 }
+
+                if (GcodeLines != null)
+                {
+                    GcodeLines.Clear();
+
+                    string allText = (newEditorText ?? "").Replace("\r\n", "\n");
+                    using (var reader = new System.IO.StringReader(allText))
+                    {
+                        string? line;
+                        while ((line = reader.ReadLine()) != null)
+                            GcodeLines.Add(line);
+                    }
+                }
+
+                // ============================================================
+                // AFTER DUMP (show post-cleanup state exactly as stored)
+                // ============================================================
+                sb.AppendLine("");
+                sb.AppendLine("============================================================");
+                sb.AppendLine("AFTER (exact SetManager contents after cleanup — NO re-pointing)");
+                sb.AppendLine("============================================================");
+                sb.AppendLine("");
+
+                DumpSets("TURN", TurnSets);
+                DumpSets("MILL", MillSets);
+                DumpSets("DRILL", DrillSets);
+
+                var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("CODE CLEANUP - TURN/MILL/DRILL", sb.ToString());
+                logWindow.Owner = this;
+                logWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Code Cleanup", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        // Show it
-        var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("CODE CLEANUP - TURN/MILL/DRILL", sb.ToString());
-        logWindow.Owner = this;
-        logWindow.Show();
-    }
-    catch (Exception ex)
-    {
-        MessageBox.Show(ex.Message, "Code Cleanup", MessageBoxButton.OK, MessageBoxImage.Error);
-    }
-}
 
 
 
@@ -4531,7 +4545,9 @@ namespace CNC_Improvements_gcode_solids
 
 
 
-        
+
+
+
 
 
 
@@ -4546,13 +4562,12 @@ namespace CNC_Improvements_gcode_solids
 
             string allText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
 
-            // Use Turn splitter for now (same as before)
             var lines = CNC_Improvements_gcode_solids.Utilities.FaptTurn.TextToLines_All(allText);
 
-            // TURN regions (existing): (G112...) blocks
+            // TURN regions: (G112...) blocks
             var turnRegions = CNC_Improvements_gcode_solids.Utilities.FaptTurn.BuildFaptRegions(lines);
 
-            // MILL regions (new): (G1062...) .. (G1206)
+            // MILL regions: (G1062...) .. (G1206)
             var millRegions = CNC_Improvements_gcode_solids.Utilities.FaptMill.BuildFaptMillRegions(lines);
 
             // Combine for selection dialog
@@ -4577,10 +4592,87 @@ namespace CNC_Improvements_gcode_solids
                 return;
             }
 
-            // MULTI SELECT (your existing dialog)
+            // MULTI SELECT dialog
             var sel = CNC_Improvements_gcode_solids.Utilities.FaptTurn.PickRegionIndices(this, regions);
             if (sel == null || sel.Count == 0)
                 return;
+
+            // helper: find existing mill set by name (case-insensitive)
+            CNC_Improvements_gcode_solids.SetManagement.RegionSet FindMillSetByName(string name)
+            {
+                if (MillSets == null) return null;
+
+                for (int i = 0; i < MillSets.Count; i++)
+                {
+                    var rs = MillSets[i];
+                    if (rs == null) continue;
+
+                    string rn = (rs.Name ?? "").Trim();
+                    if (string.Equals(rn, name, StringComparison.OrdinalIgnoreCase))
+                        return rs;
+                }
+
+                return null;
+            }
+
+            // helper: basic marker index pick for MILL generated gcode
+            void PickMillMarkerIndices(
+                List<string> rawGcode,
+                out int planeZIndex,
+                out int startXIndex,
+                out int startYIndex,
+                out int endXIndex,
+                out int endYIndex)
+            {
+                planeZIndex = -1;
+                startXIndex = -1;
+                startYIndex = -1;
+                endXIndex = -1;
+                endYIndex = -1;
+
+                if (rawGcode == null || rawGcode.Count == 0)
+                    return;
+
+                // first Z-only-ish line for plane
+                for (int i = 0; i < rawGcode.Count; i++)
+                {
+                    string u = (rawGcode[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    // prefer a pure Z line like "Z-14" or starts with "Z"
+                    if (u.StartsWith("Z", StringComparison.Ordinal))
+                    {
+                        planeZIndex = i;
+                        break;
+                    }
+                }
+
+                // first X/Y occurrence for starts
+                for (int i = 0; i < rawGcode.Count; i++)
+                {
+                    string u = (rawGcode[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (startXIndex < 0 && u.Contains("X")) startXIndex = i;
+                    if (startYIndex < 0 && u.Contains("Y")) startYIndex = i;
+
+                    if (startXIndex >= 0 && startYIndex >= 0)
+                        break;
+                }
+
+                // last X/Y occurrence for ends
+                for (int i = rawGcode.Count - 1; i >= 0; i--)
+                {
+                    string u = (rawGcode[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (endXIndex < 0 && u.Contains("X")) endXIndex = i;
+                    if (endYIndex < 0 && u.Contains("Y")) endYIndex = i;
+
+                    if (endXIndex >= 0 && endYIndex >= 0)
+                        break;
+                }
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine("=== FAPT SELECTED REGIONS ===");
@@ -4614,128 +4706,175 @@ namespace CNC_Improvements_gcode_solids
 
                 if (type == "TURN")
                 {
-                    // TURN translator (existing)
+                    // TURN translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptTurn.TranslateFaptRegionToTurnGcode(regions[idx]);
 
-                    // TURN formatting + tags + wrappers
-                    var formatted = CNC_Improvements_gcode_solids.Utilities.FaptTurn.FormatTurnGcodeBlock(name, rawGcode, alpha);
+                    // Step 2: add unique endtag with NO spaces (t:<alpha><0000>)
+                    var taggedNoSpace = new List<string>();
+                    if (rawGcode != null)
+                    {
+                        int n = 0;
+                        for (int i = 0; i < rawGcode.Count; i++)
+                        {
+                            string gl = (rawGcode[i] ?? "").TrimEnd();
+                            if (string.IsNullOrWhiteSpace(gl))
+                                continue;
 
-                    sb.AppendLine("----- GENERATED TURN GCODE (formatted) -----");
-                    if (formatted == null || formatted.Count == 0)
+                            string tag = "(t:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
+                            taggedNoSpace.Add(gl + tag); // NO space
+                            n++;
+                        }
+                    }
+
+                    sb.AppendLine("----- GENERATED TURN GCODE (tagged, no-space) -----");
+                    if (taggedNoSpace == null || taggedNoSpace.Count == 0)
                     {
                         sb.AppendLine("(no gcode generated)");
                     }
                     else
                     {
-                        foreach (var gl in formatted)
+                        foreach (var gl in taggedNoSpace)
                             sb.AppendLine(gl);
 
-                        blocksToAppend.AddRange(formatted);
-                        blocksToAppend.Add("");
+                        // Step 3/4: create/edit via builder (builder adds UID,n anchors + stores markers)
+                        int startIdx0 = 0;
+                        int endIdx0 = taggedNoSpace.Count - 1;
 
-                        // Create TURN RegionSet (strip wrappers first/last)
-                        var regionLinesOnly = CNC_Improvements_gcode_solids.Utilities.AutoAddTurnRegion.StripWrapper_FirstLast(formatted);
-
-                        CNC_Improvements_gcode_solids.Utilities.AutoAddTurnRegion.AddTurnRegionSet_FromRegionGcodeOnly(
-                            this,
-                            name,
-                            regionLinesOnly,
-                            "__ToolUsage",
-                            "__Quadrant",
-                            "__StartXLine",
-                            "__StartZLine",
-                            "__EndXLine",
-                            "__EndZLine",
-                            "TxtZExt",
-                            "NRad",
-                            defaultToolUsage: "OFF",
-                            defaultQuadrant: "3",
-                            defaultZExt: "-100",
-                            showInViewAll: true,
-                            exportEnabled: false
+                        var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildTurnRegion.Edit(
+                            turnSets: TurnSets,
+                            regionName: name,
+                            regionLines: taggedNoSpace,
+                            startXIndex: startIdx0,
+                            startZIndex: startIdx0,
+                            endXIndex: endIdx0,
+                            endZIndex: endIdx0,
+                            toolUsage: "OFF",
+                            quadrant: "3",
+                            txtZExt: "-100",
+                            nRad: "0.8",
+                            snapshotDefaults: null
                         );
+
+                        // Step 5: build RTB insert from the *stored* region lines
+                        var insert = new List<string>();
+                        insert.Add("(" + name + " ST)");
+                        for (int i = 0; i < rs.RegionLines.Count; i++)
+                        {
+                            string stored = rs.RegionLines[i] ?? "";
+                            string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                            string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                            if (!string.IsNullOrWhiteSpace(aligned))
+                                insert.Add(aligned);
+                        }
+                        insert.Add("(" + name + " END)");
+
+                        blocksToAppend.AddRange(insert);
+                        blocksToAppend.Add("");
                     }
                 }
                 else
                 {
-                    // MILL translator (placeholder: returns the fixed sample toolpath)
+                    // MILL translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptMill.TranslateFaptRegionToMillGcode(regions[idx]);
 
-                    // Format like TURN: (NAME ST)/(NAME END) + (m:a0000) tags @ col ~75
-                    var formatted = CNC_Improvements_gcode_solids.Utilities.FaptMill.FormatMillGcodeBlock(name, rawGcode, alpha);
+                    // Step 2: add unique endtag with NO spaces (m:<alpha><0000>)
+                    var taggedNoSpace = new List<string>();
+                    if (rawGcode != null)
+                    {
+                        int n = 0;
+                        for (int i = 0; i < rawGcode.Count; i++)
+                        {
+                            string gl = (rawGcode[i] ?? "").TrimEnd();
+                            if (string.IsNullOrWhiteSpace(gl))
+                                continue;
 
-                    sb.AppendLine("----- GENERATED MILL GCODE (formatted) -----");
-                    if (formatted == null || formatted.Count == 0)
+                            string tag = "(m:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
+                            taggedNoSpace.Add(gl + tag); // NO space
+                            n++;
+                        }
+                    }
+
+                    sb.AppendLine("----- GENERATED MILL GCODE (tagged, no-space) -----");
+                    if (taggedNoSpace == null || taggedNoSpace.Count == 0)
                     {
                         sb.AppendLine("(no gcode generated)");
                     }
                     else
                     {
-                        foreach (var gl in formatted)
+                        foreach (var gl in taggedNoSpace)
                             sb.AppendLine(gl);
 
-                        // append formatted block to editor
-                        blocksToAppend.AddRange(formatted);
+                        // Step 3/4: create/edit via builder (builder adds UID,n anchors + stores markers)
+                        PickMillMarkerIndices(taggedNoSpace, out int planeZIndex, out int startXIndex, out int startYIndex, out int endXIndex, out int endYIndex);
+
+                        RegionSet rs;
+                        var existing = FindMillSetByName(name);
+
+                        if (existing == null)
+                        {
+                            rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildMillRegion.Create(
+                                regionName: name,
+                                regionLines: taggedNoSpace,
+                                planeZIndex: planeZIndex,
+                                startXIndex: startXIndex,
+                                startYIndex: startYIndex,
+                                endXIndex: endXIndex,
+                                endYIndex: endYIndex,
+                                txtToolDia: "12",
+                                txtToolLen: "75",
+                                fuseAll: "0",
+                                removeSplitter: "0",
+                                clipper: "0",
+                                clipperIsland: "0",
+                                snapshotDefaults: null
+                            );
+
+                            MillSets.Add(rs);
+                        }
+                        else
+                        {
+                            rs = existing;
+
+                            CNC_Improvements_gcode_solids.SetManagement.Builders.BuildMillRegion.EditExisting(
+                                rs: rs,
+                                regionLines: taggedNoSpace,
+                                planeZIndex: planeZIndex,
+                                startXIndex: startXIndex,
+                                startYIndex: startYIndex,
+                                endXIndex: endXIndex,
+                                endYIndex: endYIndex,
+                                planeZLineRaw: null,
+                                startXLineRaw: null,
+                                startYLineRaw: null,
+                                endXLineRaw: null,
+                                endYLineRaw: null,
+                                txtToolDia: "12",
+                                txtToolLen: "75",
+                                fuseAll: "0",
+                                removeSplitter: "0",
+                                clipper: "0",
+                                clipperIsland: "0",
+                                snapshotDefaults: null
+                            );
+                        }
+
+                        // Step 5: build RTB insert from the *stored* region lines
+                        var insert = new List<string>();
+                        insert.Add("(" + name + " ST)");
+                        for (int i = 0; i < rs.RegionLines.Count; i++)
+                        {
+                            string stored = rs.RegionLines[i] ?? "";
+                            string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                            string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                            if (!string.IsNullOrWhiteSpace(aligned))
+                                insert.Add(aligned);
+                        }
+                        insert.Add("(" + name + " END)");
+
+                        blocksToAppend.AddRange(insert);
                         blocksToAppend.Add("");
-
-                        // Build MILL RegionSet from INNER lines ONLY (strip wrappers first/last)
-                        var regionLinesOnly = CNC_Improvements_gcode_solids.Utilities.AutoAddMillRegion.StripWrapper_FirstLast(formatted);
-
-
-
-                        CNC_Improvements_gcode_solids.Utilities.AutoAddMillRegion.AddMillRegionSet_FromRegionGcodeOnly(
-                            main: this,
-                            regionName: name,
-                            regionGcodeLinesOnly: regionLinesOnly,
-
-                            KEY_CoordMode: "CoordMode",
-                            KEY_ToolUsage: "__ToolUsage",
-
-                            KEY_PlaneZLineText: "PlaneZLineText",
-                            KEY_StartXLineText: "StartXLineText",
-                            KEY_StartYLineText: "StartYLineText",
-                            KEY_EndXLineText: "EndXLineText",
-                            KEY_EndYLineText: "EndYLineText",
-
-                            KEY_TxtToolDia: "TxtToolDia",
-                            KEY_TxtToolLen: "TxtToolLen",
-                            KEY_FuseAll: "Fuseall",
-                            KEY_RemoveSplitter: "RemoveSplitter",
-                            KEY_Clipper: "Clipper",
-                            KEY_ClipperIsland: "ClipperIsland",
-                            KEY_RegionUid: "__RegionUid",
-
-                            defaultCoordMode: "Cartesian",
-                            defaultToolUsage: "OFF",
-                            defaultToolDia: "12",
-                            defaultToolLen: "75",
-                            defaultFuseAll: "0",
-                            defaultRemoveSplitter: "0",
-                            defaultClipper: "0",
-                            defaultClipperIsland: "0",
-
-                            showInViewAll: true,
-                            exportEnabled: false
-                        );
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        
-
-
                     }
                 }
-
 
                 sb.AppendLine("");
             }
@@ -4751,6 +4890,8 @@ namespace CNC_Improvements_gcode_solids
                 TxtGcode.ScrollToEnd();
             }
         }
+
+
 
 
         private void Btntesting(object sender, RoutedEventArgs e)
@@ -4945,6 +5086,46 @@ namespace CNC_Improvements_gcode_solids
                         sb.AppendLine($"  {D_KEY_TXT_POINT_ANGLE}  = {GetSnapD(D_KEY_TXT_POINT_ANGLE)}");
                         sb.AppendLine($"  {D_KEY_Z_HOLE_TOP}       = {GetSnapD(D_KEY_Z_HOLE_TOP)}");
                         sb.AppendLine($"  {D_KEY_Z_PLUS_EXT}       = {GetSnapD(D_KEY_Z_PLUS_EXT)}");
+
+
+                        // ---- Drill stored holes (from snapshot) ----
+                        // The canonical key in the new DrillPage is "HoleLineTexts" (newline-separated normalized hole tokens).
+                        const string D_KEY_HOLE_LINES_TEXT = "HoleLineTexts";
+
+                        string holesRaw = GetSnapD(D_KEY_HOLE_LINES_TEXT);
+
+                        sb.AppendLine("STORED HOLES (snapshot HoleLineTexts):");
+
+                        if (string.IsNullOrWhiteSpace(holesRaw))
+                        {
+                            sb.AppendLine("  (none)");
+                        }
+                        else
+                        {
+                            // Keep exact stored text, but print as indexed lines.
+                            var toks = holesRaw
+                                .Replace("\r\n", "\n")
+                                .Replace("\r", "\n")
+                                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                .Select(s => (s ?? "").Trim())
+                                .Where(s => s.Length > 0)
+                                .ToList();
+
+                            if (toks.Count == 0)
+                            {
+                                sb.AppendLine("  (none)");
+                            }
+                            else
+                            {
+                                for (int h = 0; h < toks.Count; h++)
+                                    sb.AppendLine($"  [{h + 1:0000}] {toks[h]}");
+                            }
+                        }
+
+                        sb.AppendLine();
+
+
+
 
                         int rc = (set.RegionLines == null) ? 0 : set.RegionLines.Count;
                         sb.AppendLine($"REGIONLINES (holes): count={rc}");

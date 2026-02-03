@@ -2,41 +2,44 @@
 using CNC_Improvements_gcode_solids.SetManagement;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CNC_Improvements_gcode_solids.Utilities
 {
     /// <summary>
-    /// SIMPLE RETAG ONLY (NO PAYLOAD LOGIC):
+    /// One-shot cleanup for TURN + MILL + DRILL:
+    /// - Strip CNC comments "( ... )" everywhere EXCEPT the unique end-tag we own.
+    /// - Rebuild anchors "#uid,n#" (n starts at 1 and increments by 1).
+    /// - Rebuild unique end-tags using the canonical scheme:
+    ///     Turn: (t:a0000..), next turn set (t:b0000..), etc.
+    ///     Mill: (m:a0000..), next mill set (m:b0000..), etc.
+    ///     Drill:(d:a0000..), next drill set(d:b0000..), etc.
     ///
-    /// For each set:
-    /// 1) Read RegionLines and start/end snapshot keys.
-    /// 2) Strip existing unique tag using TextSearching.TryRemoveUniqueTag().
-    /// 3) Canonicalize using TextSearching.NormalizeTextLineAsIs() (removes ALL whitespace, uppercases).
-    /// 4) Append new unique tag (no spaces) and store back into RegionLines.
-    /// 5) Rewrite start/end keys by exact canonical mapping to the new RegionLines.
-    /// 6) Build editor text from RegionLines using NormalizeInsertLineAlignEndTag() (tag aligned to col 75).
-    /// 7) Wrap with "(NAME ST)" "(NAME END)".
-    /// 8) Return editor text to caller.
-    ///
-    /// Notes:
-    /// - No regex, no anchor parsing, no payload queue matching.
-    /// - Works only if keys/region are stored in the SAME canonical form (NormalizeTextLineAsIs).
+    /// IMPORTANT:
+    /// - Updates RegionSets IN-PLACE (RegionLines + snapshot anchor values if present).
+    /// - NO SEARCH: snapshot anchor values are remapped by original anchor N -> new anchor N (positional).
+    /// - Emits editor text with "(NAME ST)" / "(NAME END)" markers (output only).
     /// </summary>
     internal static class CodeCleanup
     {
-        private const int TAG_PAD_COLUMN = 75;
+        // Match a trailing unique tag we own: (u:...), (t:...), (m:...), (d:...)
+        // NOTE: we accept any digit count on input so we can clean legacy formats too.
+        private static readonly Regex RxTrailingUniqueTag =
+            new Regex(@"\((u|t|m|d):[a-z]+[0-9]+\)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // These are the ONLY snapshot motion-line keys we retag here.
-        // If a set doesn't have them, nothing happens.
-        private static readonly string[] StartEndKeys = new[]
-        {
-            "__StartXLine",
-            "__StartZLine",
-            "__EndXLine",
-            "__EndZLine",
-        };
+        // Match any "( ... )" block (CNC comments, etc.)
+        private static readonly Regex RxAnyParenBlock =
+            new Regex(@"\([^)]*\)", RegexOptions.Compiled);
+
+        // Optional numbered prefix like "1234:"
+        private static readonly Regex RxLineNumberPrefix =
+            new Regex(@"^\s*\d+\s*:\s*", RegexOptions.Compiled);
+
+        // Leading anchor "#uid,n#"
+        private static readonly Regex RxLeadingAnchor =
+            new Regex(@"^\s*#([^#]+)#", RegexOptions.Compiled);
 
         public static string BuildAndApplyAllCleanup(
             IList<RegionSet> turnSets,
@@ -44,213 +47,348 @@ namespace CNC_Improvements_gcode_solids.Utilities
             IList<RegionSet> drillSets,
             out string newEditorText)
         {
-            var report = new StringBuilder(16384);
-            var editor = new StringBuilder(65536);
+            var report = new StringBuilder(32_768);
+            var editor = new StringBuilder(512_000);
 
-            report.AppendLine("=== ONE-SHOT CLEANUP: TURN + MILL + DRILL (RETAG ONLY) ===");
+            report.AppendLine("=== ONE-SHOT CLEANUP: TURN + MILL + DRILL ===");
             report.AppendLine("Rules:");
-            report.AppendLine(" - Strip old unique tag via TryRemoveUniqueTag()");
-            report.AppendLine(" - Canonicalize via NormalizeTextLineAsIs() (no whitespace, uppercase)");
-            report.AppendLine(" - Append new tag (no spaces)");
-            report.AppendLine(" - Rewrite Start/End keys by exact canonical mapping");
-            report.AppendLine(" - Editor output uses NormalizeInsertLineAlignEndTag() (tag col 75)");
+            report.AppendLine(" - Strip CNC comment parens ( ... ) except our unique end-tag");
+            report.AppendLine(" - Rebuild anchors as #uid,n# (n starts at 1)");
+            report.AppendLine(" - Rebuild end-tags as:");
+            report.AppendLine("     TURN: (t:a0000..), next set (t:b0000..), etc.");
+            report.AppendLine("     MILL: (m:a0000..), next set (m:b0000..), etc.");
+            report.AppendLine("     DRILL:(d:a0000..), next set (d:b0000..), etc.");
+            report.AppendLine("------------------------------------------------------------");
             report.AppendLine();
 
-            char setId = 'A';
+            int turnTouched = CleanupSetList(turnSets, typePrefix: 't', report, editor, "TURN");
+            int millTouched = CleanupSetList(millSets, typePrefix: 'm', report, editor, "MILL");
+            int drillTouched = CleanupSetList(drillSets, typePrefix: 'd', report, editor, "DRILL");
 
-            ProcessKind('T', "TURN", turnSets, ref setId, report, editor);
-            ProcessKind('M', "MILL", millSets, ref setId, report, editor);
-            ProcessKind('D', "DRILL", drillSets, ref setId, report, editor);
+            report.AppendLine();
+            report.AppendLine("------------------------------------------------------------");
+            report.AppendLine($"DONE. Sets touched: TURN={turnTouched}, MILL={millTouched}, DRILL={drillTouched}");
+            report.AppendLine("------------------------------------------------------------");
 
-            newEditorText = editor.ToString();
+            newEditorText = editor.ToString().Replace("\r\n", "\n");
             return report.ToString();
         }
 
-        private static void ProcessKind(
-            char kindTag,          // 'T' / 'M' / 'D'
-            string kindName,
+        private static int CleanupSetList(
             IList<RegionSet> sets,
-            ref char setId,
+            char typePrefix,
             StringBuilder report,
-            StringBuilder editor)
+            StringBuilder editor,
+            string title)
         {
-            report.AppendLine($"--- {kindName} SETS ---");
-
             if (sets == null || sets.Count == 0)
             {
-                report.AppendLine($"No {kindName} sets.");
-                report.AppendLine();
-                return;
+                report.AppendLine($"[{title}] no sets.");
+                return 0;
             }
 
-            int processed = 0;
+            int touched = 0;
 
-            for (int i = 0; i < sets.Count; i++)
+            for (int setIndex = 0; setIndex < sets.Count; setIndex++)
             {
-                var set = sets[i];
-                if (set == null)
-                    continue;
+                var set = sets[setIndex];
+                if (set == null) continue;
 
-                if (set.RegionLines == null || set.RegionLines.Count == 0)
-                    continue;
+                string setName = (set.Name ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(setName))
+                    setName = $"{title}-{setIndex + 1}";
 
-                string name = (set.Name ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                    name = $"{kindName}_SET_{i + 1}";
+                // Per-type set letter: a, b, c... (excel-style if needed)
+                string setLetter = ToAlphaIndex(setIndex); // a, b, ... z, aa, ab...
 
-                int inCount = set.RegionLines.Count;
-
-                // Map: canonical(no tag) -> newStoredLine(with new tag)
-                // This is the ONLY thing we use to rewrite Start/End keys.
-                var canonMap = new Dictionary<string, string>(StringComparer.Ordinal);
-
-                var newStoredLines = new List<string>(inCount);
-
-                // 1) Retag RegionLines
-                for (int r = 0; r < set.RegionLines.Count; r++)
+                int beforeCount = set.RegionLines?.Count ?? 0;
+                if (beforeCount == 0)
                 {
-                    string raw = set.RegionLines[r] ?? "";
-
-                    // strip existing unique tag
-                    if (TextSearching.TryRemoveUniqueTag(raw, out string noTag))
-                        raw = noTag;
-
-                    // canonicalize (removes ALL whitespace, uppercase)
-                    string canon = TextSearching.NormalizeTextLineAsIs(raw);
-                    if (string.IsNullOrWhiteSpace(canon))
-                        continue;
-
-                    // build and append new tag (no spaces)
-                    string newTag = BuildUniqueTag(kindTag, setId, newStoredLines.Count);
-                    string stored = canon + newTag;
-
-                    newStoredLines.Add(stored);
-
-                    // store first mapping only (stable)
-                    if (!canonMap.ContainsKey(canon))
-                        canonMap[canon] = stored;
+                    report.AppendLine($"[{title}] {setName}: RegionLines empty.");
+                    continue;
                 }
 
-                // 2) DRILL depth line: retag it too (if present) and include if not already present
-                bool drillDepthIncluded = false;
-                if (kindTag == 'D')
+                // Keep uid if present, else new
+                string uid = ExtractUidFromRegionLines(set.RegionLines);
+                if (string.IsNullOrWhiteSpace(uid))
+                    uid = Guid.NewGuid().ToString("N");
+
+                // Clean + rebuild region lines
+                int removedCommentBlocks = 0;
+                int removedBlank = 0;
+
+                var cleanedCore = new List<string>(beforeCount);
+                var keptOldNs = new List<int>(beforeCount); // original anchor N for each kept line (or -1)
+
+                foreach (var raw in set.RegionLines)
                 {
-                    string depth = GetSnapValue(set, "DrillDepthLineText");
-                    if (!string.IsNullOrWhiteSpace(depth))
+                    string line = StripNumberPrefix(raw ?? "");
+
+                    // capture original anchor N (positional identity)
+                    int oldN = TryParseAnchorN(line, out int parsedN) ? parsedN : -1;
+
+                    line = StripLeadingAnchor(line).Trim();
+                    if (string.IsNullOrWhiteSpace(line))
                     {
-                        if (TextSearching.TryRemoveUniqueTag(depth, out string noTagDepth))
-                            depth = noTagDepth;
-
-                        string canonDepth = TextSearching.NormalizeTextLineAsIs(depth);
-
-                        if (!string.IsNullOrWhiteSpace(canonDepth) && !canonMap.ContainsKey(canonDepth))
-                        {
-                            string newTag = BuildUniqueTag(kindTag, setId, newStoredLines.Count);
-                            string stored = canonDepth + newTag;
-
-                            newStoredLines.Add(stored);
-                            canonMap[canonDepth] = stored;
-                            drillDepthIncluded = true;
-                        }
+                        removedBlank++;
+                        continue;
                     }
+
+                    // preserve trailing unique tag if present so it doesn't get removed as a comment block
+                    ExtractTrailingUniqueTag(line, out bool hadTag);
+
+                    // remove *all* other ( ... ) blocks (this will also remove any legacy inline comments)
+                    // but if a trailing unique tag exists, we remove it first then append later (we rebuild anyway)
+                    line = StripTrailingUniqueTag(line).TrimEnd();
+
+                    int beforeParenCount = CountParenBlocks(line);
+                    line = RemoveAllParenBlocks(line);
+                    int afterParenCount = CountParenBlocks(line);
+                    removedCommentBlocks += Math.Max(0, beforeParenCount - afterParenCount);
+
+                    line = line.Trim();
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        removedBlank++;
+                        continue;
+                    }
+
+                    cleanedCore.Add(line);
+                    keptOldNs.Add(oldN);
                 }
 
-                if (newStoredLines.Count == 0)
+                // Rebuild anchored lines + new tags
+                var rebuilt = new List<string>(cleanedCore.Count);
+                var oldNToNewN = new Dictionary<int, int>(); // oldN -> newN (both 1-based)
+
+                for (int i = 0; i < cleanedCore.Count; i++)
                 {
-                    report.AppendLine($"[{kindName}] {name}: SKIP (no lines after retag).");
-                    continue;
+                    string core = cleanedCore[i];
+
+                    // numeric 0000.. increments by 1 per line in this set
+                    string num = i.ToString("0000");
+                    string newTag = $"({typePrefix}:{setLetter}{num})";
+
+                    // Ensure no legacy tag remains
+                    core = StripTrailingUniqueTag(core).TrimEnd();
+
+                    // Rebuild canonical anchor "#uid,n#"
+                    int newN = i + 1;
+                    string anchored = $"#{uid},{newN}#{core}{newTag}";
+                    rebuilt.Add(anchored);
+
+                    int oldN = (i >= 0 && i < keptOldNs.Count) ? keptOldNs[i] : -1;
+                    if (oldN > 0 && !oldNToNewN.ContainsKey(oldN))
+                        oldNToNewN.Add(oldN, newN);
                 }
 
-                // 3) Rewrite Start/End snapshot keys using EXACT mapping
-                int keysRemapped = RemapStartEndKeys(set, canonMap);
+                // Apply in-place (RegionLines is read-only property, but the collection is mutable)
+                if (set.RegionLines == null)
+                    throw new InvalidOperationException("RegionSet.RegionLines is null (expected an initialized mutable list/collection).");
 
-                // 4) Store RegionLines back into the set
                 set.RegionLines.Clear();
-                for (int k = 0; k < newStoredLines.Count; k++)
-                    set.RegionLines.Add(newStoredLines[k]);
+                for (int i = 0; i < rebuilt.Count; i++)
+                    set.RegionLines.Add(rebuilt[i]);
 
-                // 5) Build editor output from the set RegionLines (align tag for display)
-                editor.AppendLine($"({(name ?? "").Trim().ToUpperInvariant()} ST)");
-                for (int k = 0; k < newStoredLines.Count; k++)
-                    editor.AppendLine(TextSearching.NormalizeInsertLineAlignEndTag(newStoredLines[k], TAG_PAD_COLUMN));
-                editor.AppendLine($"({(name ?? "").Trim().ToUpperInvariant()} END)");
+                // Snapshot anchor remap: NO SEARCH. Use old anchor N -> new anchor N mapping.
+                RetagSnapshotAnchorsByIndexMap(set, oldNToNewN, rebuilt);
+
+                touched++;
+
+                // Emit editor block (output-only markers)
+                editor.AppendLine($"({setName} ST)");
+                foreach (var line in rebuilt)
+                    editor.AppendLine(GeneralNormalizers.NormalizeInsertLineAlignEndTag(line, 75));
+                editor.AppendLine($"({setName} END)");
                 editor.AppendLine();
 
-                report.AppendLine($"[{kindName}] {name}:");
-                report.AppendLine($"  Motion lines in: {inCount}");
-                report.AppendLine($"  Motion lines out: {newStoredLines.Count}");
-                report.AppendLine($"  Start/End keys remapped: {keysRemapped}");
-                if (kindTag == 'D')
-                    report.AppendLine($"  Drill depth included: {drillDepthIncluded}");
+                report.AppendLine($"[{title}] {setName}:");
+                report.AppendLine($"  Lines in : {beforeCount}");
+                report.AppendLine($"  Lines out: {rebuilt.Count}");
+                report.AppendLine($"  Removed blank: {removedBlank}");
+                report.AppendLine($"  Removed comment blocks: {removedCommentBlocks}");
+                report.AppendLine($"  UID: {uid}");
+                report.AppendLine($"  Tag: ({typePrefix}:{setLetter}0000..)  (numeric increments by 1)");
                 report.AppendLine();
-
-                processed++;
-                if (setId < 'Z') setId++;
             }
 
-            if (processed == 0)
-                report.AppendLine($"No {kindName} sets contained region lines.");
-
-            report.AppendLine();
+            return touched;
         }
 
-        private static int RemapStartEndKeys(RegionSet set, Dictionary<string, string> canonMap)
+        /// <summary>
+        /// Remap any snapshot value(s) that contain anchored lines "#uid,n#..."
+        /// using positional mapping oldN->newN. No text search.
+        ///
+        /// - For each anchored snapshot line, we replace it with rebuilt[newN-1] (full anchored line with new tag).
+        /// - If oldN not found in map, we leave that line unchanged.
+        /// </summary>
+        private static void RetagSnapshotAnchorsByIndexMap(RegionSet set, Dictionary<int, int> oldNToNewN, List<string> rebuilt)
         {
-            if (set?.PageSnapshot?.Values == null)
-                return 0;
+            if (set?.PageSnapshot?.Values == null) return;
+            if (oldNToNewN == null || oldNToNewN.Count == 0) return;
+            if (rebuilt == null || rebuilt.Count == 0) return;
 
-            int changed = 0;
-
-            for (int i = 0; i < StartEndKeys.Length; i++)
+            var keys = set.PageSnapshot.Values.Keys.ToList();
+            for (int k = 0; k < keys.Count; k++)
             {
-                string key = StartEndKeys[i];
+                string key = keys[k];
+                if (key == null) continue;
 
-                if (!set.PageSnapshot.Values.TryGetValue(key, out string oldVal))
+                if (!set.PageSnapshot.Values.TryGetValue(key, out string raw)) continue;
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+
+                // If this snapshot value isn't an anchored-line string, skip quickly
+                // (we only touch values containing "#", but we still validate anchor parse before changing).
+                if (!raw.Contains("#"))
                     continue;
 
-                oldVal ??= "";
-                string raw = oldVal;
+                string norm = raw.Replace("\r\n", "\n").Replace("\r", "\n");
 
-                // strip existing unique tag
-                if (TextSearching.TryRemoveUniqueTag(raw, out string noTag))
-                    raw = noTag;
-
-                // canonicalize exactly the same way as RegionLines
-                string canon = TextSearching.NormalizeTextLineAsIs(raw);
-                if (string.IsNullOrWhiteSpace(canon))
-                    continue;
-
-                // exact mapping to new stored line (with new tag)
-                if (canonMap.TryGetValue(canon, out string newLine) && !string.IsNullOrWhiteSpace(newLine))
+                // MULTI-LINE: rewrite each anchored line independently
+                if (norm.Contains("\n"))
                 {
-                    if (!string.Equals(oldVal, newLine, StringComparison.Ordinal))
+                    var lines = norm.Split('\n');
+                    bool changed = false;
+
+                    for (int i = 0; i < lines.Length; i++)
                     {
-                        set.PageSnapshot.Values[key] = newLine;
-                        changed++;
+                        string s = (lines[i] ?? "").Trim();
+                        if (s.Length == 0) continue;
+
+                        if (!TryParseAnchorN(s, out int oldN)) continue;
+                        if (oldN <= 0) continue;
+
+                        if (!oldNToNewN.TryGetValue(oldN, out int newN)) continue;
+                        if (newN <= 0 || newN > rebuilt.Count) continue;
+
+                        lines[i] = rebuilt[newN - 1];
+                        changed = true;
                     }
+
+                    if (changed)
+                        set.PageSnapshot.Values[key] = string.Join("\n", lines.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()));
+                }
+                else
+                {
+                    // SINGLE-LINE
+                    string s = norm.Trim();
+                    if (!TryParseAnchorN(s, out int oldN)) continue;
+                    if (oldN <= 0) continue;
+
+                    if (!oldNToNewN.TryGetValue(oldN, out int newN)) continue;
+                    if (newN <= 0 || newN > rebuilt.Count) continue;
+
+                    set.PageSnapshot.Values[key] = rebuilt[newN - 1];
                 }
             }
-
-            return changed;
         }
 
-        private static string BuildUniqueTag(char kindTag, char setId, int seq)
+        private static bool TryParseAnchorN(string s, out int n)
         {
-            // "(T:A0000)" etc — no spaces
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "({0}:{1}{2:0000})",
-                char.ToUpperInvariant(kindTag),
-                char.ToUpperInvariant(setId),
-                seq);
+            n = -1;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+
+            string t = s.TrimStart();
+            if (!t.StartsWith("#", StringComparison.Ordinal)) return false;
+
+            int hash2 = t.IndexOf('#', 1);
+            if (hash2 < 0) return false;
+
+            // between first # and second # we expect "uid,n" or "uid"
+            string inside = t.Substring(1, hash2 - 1);
+            int comma = inside.LastIndexOf(',');
+            if (comma < 0) return false;
+
+            string nText = inside.Substring(comma + 1).Trim();
+            if (!int.TryParse(nText, out n)) return false;
+            return n > 0;
         }
 
-        private static string GetSnapValue(RegionSet set, string key)
+        private static string StripNumberPrefix(string s)
         {
-            if (set?.PageSnapshot?.Values == null)
-                return "";
+            if (s == null) return "";
+            return RxLineNumberPrefix.Replace(s, "");
+        }
 
-            return set.PageSnapshot.Values.TryGetValue(key, out string v) ? (v ?? "") : "";
+        private static string StripLeadingAnchor(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            if (!s.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                return s;
+
+            var m = RxLeadingAnchor.Match(s);
+            if (!m.Success) return s;
+
+            // remove "#...#" (first anchor only)
+            int end = m.Index + m.Length;
+            if (end >= 0 && end <= s.Length)
+                return s.Substring(end);
+            return s;
+        }
+
+        private static string ExtractUidFromRegionLines(IList<string> regionLines)
+        {
+            if (regionLines == null || regionLines.Count == 0) return "";
+            for (int i = 0; i < regionLines.Count; i++)
+            {
+                string s = regionLines[i] ?? "";
+                s = s.Trim();
+                if (!s.StartsWith("#", StringComparison.Ordinal)) continue;
+
+                // "#uid,n#..."
+                int comma = s.IndexOf(',', 1);
+                int hash2 = s.IndexOf('#', 1);
+                if (comma > 1 && hash2 > comma)
+                    return s.Substring(1, comma - 1).Trim();
+
+                // fallback: "#uid#..."
+                if (hash2 > 1)
+                    return s.Substring(1, hash2 - 1).Trim();
+            }
+            return "";
+        }
+
+        private static void ExtractTrailingUniqueTag(string s, out bool hadTag)
+        {
+            hadTag = false;
+            if (string.IsNullOrEmpty(s)) return;
+            var m = RxTrailingUniqueTag.Match(s);
+            hadTag = m.Success;
+        }
+
+        private static string StripTrailingUniqueTag(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return RxTrailingUniqueTag.Replace(s, "").TrimEnd();
+        }
+
+        private static int CountParenBlocks(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0;
+            return RxAnyParenBlock.Matches(s).Count;
+        }
+
+        private static string RemoveAllParenBlocks(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            // remove all "(...)" blocks
+            return RxAnyParenBlock.Replace(s, "");
+        }
+
+        // 0->a, 1->b ... 25->z, 26->aa ...
+        private static string ToAlphaIndex(int index)
+        {
+            if (index < 0) index = 0;
+            var sb = new StringBuilder(8);
+            int n = index;
+            while (true)
+            {
+                int rem = n % 26;
+                sb.Insert(0, (char)('a' + rem));
+                n = (n / 26) - 1;
+                if (n < 0) break;
+            }
+            return sb.ToString();
         }
     }
 }

@@ -107,7 +107,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             for (int i = 0; i < regionGcodeLinesOnly.Count; i++)
             {
                 string raw = regionGcodeLinesOnly[i] ?? "";
-                string norm = TextSearching.NormalizeTextLineToGcodeAndEndTag(raw);
+                string norm = GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(raw);
 
                 // skip empties
                 if (string.IsNullOrWhiteSpace(norm))

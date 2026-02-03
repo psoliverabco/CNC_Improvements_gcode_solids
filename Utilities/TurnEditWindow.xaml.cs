@@ -17,6 +17,8 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers;
 using System.Windows.Threading;
+using CNC_Improvements_gcode_solids.SetManagement.Builders;
+
 
 
 namespace CNC_Improvements_gcode_solids.Utilities
@@ -661,7 +663,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                 string newName = MakeUniqueTurnSetName(proposed.Trim());
 
-                // Tag ST/END
+                // Tag ST/END for editor output only
                 var marked = AppendStartEndMarkers(newRegionLines, newName);
 
                 // Append to editor
@@ -669,39 +671,43 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 AppendRegionBlockToEditor(marked);
                 SyncGcodeLinesFromEditor();
 
-                // Create and add new set using the shared AutoAddRegion path
+                // Create and add new set using the SAME SetManagement builders + normalizers as MainWindow.
+                // We store the region as anchored lines (#uid,n#...) and snapshot marker keys point at anchored lines.
                 var main = GetMain();
 
-                // IMPORTANT:
-                // - pass the *region G-code only* lines (no "(name ST)/(name END)" markers)
-                // - TurnEditWindow wants: ShowInViewAll = false, ExportEnabled = true
-                var newSet = AutoAddTurnRegion.AddTurnRegionSet_FromRegionGcodeOnly(
-                    main: main,
+                // Compute TURN marker indices (0-based into regionLines)
+                int firstX = -1, firstZ = -1, lastX = -1, lastZ = -1;
+                for (int i = 0; i < newRegionLines.Count; i++)
+                {
+                    string s = newRegionLines[i] ?? "";
+                    if (firstX < 0 && LineHasAxis(s, 'X')) firstX = i;
+                    if (firstZ < 0 && LineHasAxis(s, 'Z')) firstZ = i;
+                    if (LineHasAxis(s, 'X')) lastX = i;
+                    if (LineHasAxis(s, 'Z')) lastZ = i;
+                }
+
+                if (firstX < 0 || firstZ < 0 || lastX < 0 || lastZ < 0)
+                    throw new Exception("Cannot save region: X/Z markers not found.");
+
+                var newSet = BuildTurnRegion.Create(
                     regionName: newName,
-                    regionGcodeLinesOnly: newRegionLines,   // <-- NOT "marked"
-                    KEY_ToolUsage: KEY_ToolUsage,
-                    KEY_Quadrant: KEY_Quadrant,
-                    KEY_StartXLine: KEY_StartXLine,
-                    KEY_StartZLine: KEY_StartZLine,
-                    KEY_EndXLine: KEY_EndXLine,
-                    KEY_EndZLine: KEY_EndZLine,
-                    KEY_TxtZExt: KEY_TxtZExt,
-                    KEY_NRad: KEY_NRad,
-                    defaultToolUsage: "OFF",
-                    defaultQuadrant: "3",
-                    defaultZExt: "-100",
-                    defaultNRad: "0.8",
-                    showInViewAll: false,
-                    exportEnabled: true
+                    regionLines: newRegionLines,
+                    startXIndex: firstX,
+                    startZIndex: firstZ,
+                    endXIndex: lastX,
+                    endZIndex: lastZ,
+                    toolUsage: "OFF",
+                    quadrant: "3",
+                    txtZExt: "-100",
+                    nRad: "0.8",
+                    snapshotDefaults: null
                 );
 
-                // Safety: if AutoAddRegion *only creates* but doesn’t add, ensure it’s in the list.
-                if (newSet != null && !main.TurnSets.Contains(newSet))
-                    main.TurnSets.Add(newSet);
+                // TurnEditWindow wants these defaults for the NEW set.
+                newSet.ShowInViewAll = false;
+                newSet.ExportEnabled = true;
 
-                try { main.SelectedTurnSet = newSet; } catch { }
-
-
+                main.TurnSets.Add(newSet);
                 try { main.SelectedTurnSet = newSet; } catch { }
 
                 ShowLogWindowIfEnabled("Turn Editor: Saved Region (Generated)", marked, newName);
@@ -712,6 +718,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 MessageBox.Show(ex.Message, "Turn Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         // ============================================================
         // UI: Fit / Cancel / zoom
@@ -2196,22 +2203,16 @@ namespace CNC_Improvements_gcode_solids.Utilities
             string tagST = $" ({newRegName} ST)";
             string tagEND = $" ({newRegName} END)";
 
-            var outLines = new List<string>(lines.Count);
+            
 
-            for (int i = 0; i < lines.Count; i++)
-            {
-                string s = (lines[i] ?? "").TrimEnd();
 
-                bool needST = (i == firstX) || (i == firstZ);
-                bool needEND = (i == lastX) || (i == lastZ);
+            lines.Insert(0, tagST);
+            
 
-                if (needST && !s.Contains(tagST, StringComparison.Ordinal)) s += tagST;
-                if (needEND && !s.Contains(tagEND, StringComparison.Ordinal)) s += tagEND;
 
-                outLines.Add(s);
-            }
+           lines.Add(tagEND);
 
-            return outLines;
+            return lines;
         }
 
         private void AppendRegionBlockToEditor(List<string> appendedLines)
@@ -2232,42 +2233,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             rtb.ScrollToEnd();
         }
 
-        private RegionSet CreateTurnRegionSetFromAppendedLines(string newName, List<string> appendedLines)
-        {
-            var s = new RegionSet(RegionSetKind.Turn, newName)
-            {
-                PageSnapshot = new UiStateSnapshot()
-            };
-
-            // defaults (match your project)
-            s.PageSnapshot.Values[KEY_TxtZExt] = "-100";
-            s.PageSnapshot.Values[KEY_NRad] = "0.8";
-            s.PageSnapshot.Values[KEY_ToolUsage] = "OFF";
-            s.PageSnapshot.Values[KEY_Quadrant] = "3";
-
-            s.RegionLines.Clear();
-            for (int i = 0; i < appendedLines.Count; i++)
-                s.RegionLines.Add(appendedLines[i] ?? "");
-
-            // store marker lines (normalized whole-line match strings)
-            int firstX = -1, firstZ = -1, lastX = -1, lastZ = -1;
-
-            for (int i = 0; i < appendedLines.Count; i++)
-            {
-                string ln = appendedLines[i] ?? "";
-                if (firstX < 0 && LineHasAxis(ln, 'X')) firstX = i;
-                if (firstZ < 0 && LineHasAxis(ln, 'Z')) firstZ = i;
-                if (LineHasAxis(ln, 'X')) lastX = i;
-                if (LineHasAxis(ln, 'Z')) lastZ = i;
-            }
-
-            s.PageSnapshot.Values[KEY_StartXLine] = (firstX >= 0) ? NormalizeLineForMatch(appendedLines[firstX]) : "";
-            s.PageSnapshot.Values[KEY_StartZLine] = (firstZ >= 0) ? NormalizeLineForMatch(appendedLines[firstZ]) : "";
-            s.PageSnapshot.Values[KEY_EndXLine] = (lastX >= 0) ? NormalizeLineForMatch(appendedLines[lastX]) : "";
-            s.PageSnapshot.Values[KEY_EndZLine] = (lastZ >= 0) ? NormalizeLineForMatch(appendedLines[lastZ]) : "";
-
-            return s;
-        }
+        
 
         private void ShowLogWindowIfEnabled(string title, List<string> regionLines, string regionName)
         {

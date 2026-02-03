@@ -45,9 +45,6 @@ namespace CNC_Improvements_gcode_solids.Pages
         }
 
 
-     
-
-
 
         private class ToolComp
         {
@@ -132,7 +129,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             set.ResolvedEndLine = e;
         }
 
-
         // ============================================================
         // UNIVERSAL: Apply Turn Set (called from MainWindow)
         // ============================================================
@@ -183,21 +179,21 @@ namespace CNC_Improvements_gcode_solids.Pages
                 int rangeEnd = set.ResolvedEndLine ?? -1;
 
                 // Start markers: first match in range
-                startXIndex = TextSearching.FindSingleLine(lines, sxText, rangeStart, rangeEnd, preferLast: false);
-                startZIndex = TextSearching.FindSingleLine(lines, szText, rangeStart, rangeEnd, preferLast: false);
+                startXIndex = GeneralNormalizers.FindSingleLine(lines, sxText, rangeStart, rangeEnd, preferLast: false);
+                startZIndex = GeneralNormalizers.FindSingleLine(lines, szText, rangeStart, rangeEnd, preferLast: false);
 
                 // End markers: last match in range (fixes "same line" when start/end text identical)
-                endXIndex = TextSearching.FindSingleLine(lines, exText, rangeStart, rangeEnd, preferLast: true);
-                endZIndex = TextSearching.FindSingleLine(lines, ezText, rangeStart, rangeEnd, preferLast: true);
+                endXIndex = GeneralNormalizers.FindSingleLine(lines, exText, rangeStart, rangeEnd, preferLast: true);
+                endZIndex = GeneralNormalizers.FindSingleLine(lines, ezText, rangeStart, rangeEnd, preferLast: true);
 
                 // If region isn't resolved, fall back to global search for markers (best-effort)
                 if (rangeStart < 0 || rangeEnd < 0)
                 {
-                    startXIndex = (startXIndex >= 0) ? startXIndex : TextSearching.FindSingleLine(lines, sxText, -1, -1, preferLast: false);
-                    startZIndex = (startZIndex >= 0) ? startZIndex : TextSearching.FindSingleLine(lines, szText, -1, -1, preferLast: false);
+                    startXIndex = (startXIndex >= 0) ? startXIndex : GeneralNormalizers.FindSingleLine(lines, sxText, -1, -1, preferLast: false);
+                    startZIndex = (startZIndex >= 0) ? startZIndex : GeneralNormalizers.FindSingleLine(lines, szText, -1, -1, preferLast: false);
 
-                    endXIndex = (endXIndex >= 0) ? endXIndex : TextSearching.FindSingleLine(lines, exText, -1, -1, preferLast: true);
-                    endZIndex = (endZIndex >= 0) ? endZIndex : TextSearching.FindSingleLine(lines, ezText, -1, -1, preferLast: true);
+                    endXIndex = (endXIndex >= 0) ? endXIndex : GeneralNormalizers.FindSingleLine(lines, exText, -1, -1, preferLast: true);
+                    endZIndex = (endZIndex >= 0) ? endZIndex : GeneralNormalizers.FindSingleLine(lines, ezText, -1, -1, preferLast: true);
                 }
             }
             finally
@@ -321,9 +317,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             return true;
         }
 
-
-
-
         private bool TryRebuildTurnSetRegionFromStoredMarkers(RegionSet set, List<string> allLines, out string reason)
         {
             reason = "";
@@ -354,10 +347,10 @@ namespace CNC_Improvements_gcode_solids.Pages
             }
 
             // Find markers globally (best-effort)
-            int sx = TextSearching.FindSingleLine(allLines, sxText, -1, -1, preferLast: false);
-            int sz = TextSearching.FindSingleLine(allLines, szText, -1, -1, preferLast: false);
-            int ex = TextSearching.FindSingleLine(allLines, exText, -1, -1, preferLast: true);
-            int ez = TextSearching.FindSingleLine(allLines, ezText, -1, -1, preferLast: true);
+            int sx = GeneralNormalizers.FindSingleLine(allLines, sxText, -1, -1, preferLast: false);
+            int sz = GeneralNormalizers.FindSingleLine(allLines, szText, -1, -1, preferLast: false);
+            int ex = GeneralNormalizers.FindSingleLine(allLines, exText, -1, -1, preferLast: true);
+            int ez = GeneralNormalizers.FindSingleLine(allLines, ezText, -1, -1, preferLast: true);
 
             if (sx < 0 || sz < 0 || ex < 0 || ez < 0)
             {
@@ -415,9 +408,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             return true;
         }
 
-
-
-
         private void StoreTurnParamsIntoSelectedSet()
         {
             if (_isApplyingTurnSet) return;
@@ -443,7 +433,6 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             ResolveAndUpdateStatus(set, GetGcodeLines());
         }
-
 
         // -------------------------
         // IGcodePage
@@ -539,8 +528,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             StoreSelectionIntoSelectedSet();
         }
 
-
-
         // ============================================================
         // Store current picked markers + region text into SelectedTurnSet
         // (called after marker clicks)
@@ -602,12 +589,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             // Resolve now (anchored RegionLines match raw editor lines via searches)
             ResolveAndUpdateStatus(set, lines);
         }
-
-
-
-
-
-
 
         // -------------------------
         // Button handlers
@@ -836,14 +817,11 @@ namespace CNC_Improvements_gcode_solids.Pages
                $"(lines={lines.Count}, sel={selectedLineIndex}, sx={startXIndex}, sz={startZIndex}, ex={endXIndex}, ez={endZIndex})");
         }
 
-
-
         // Unique tag styling: (u:xxxx) — light blue @ ~50% opacity
         private static readonly Brush UniqueTagBrush = UniqueTagColor.UniqueTagBrush;
 
         private static bool TrySplitUniqueTag(string line, out string mainText, out string tagText)
         {
-
 
             mainText = line ?? string.Empty;
             tagText = string.Empty;
@@ -1212,8 +1190,6 @@ namespace CNC_Improvements_gcode_solids.Pages
             cxR = cxRLocal;
             cz = czLocal;
         }
-
-        // 2nd half turningpage.cs
         private List<string> BuildProfileTextFromMoves(List<GeoMove> moves)
         {
             if (moves == null || moves.Count == 0)
@@ -1323,8 +1299,6 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             return lines.GetRange(start, end - start + 1);
         }
-
-        // (everything below here remains exactly as your pasted file; unchanged)
         // ...
         // NOTE: You did NOT paste beyond BtnTurnEditor_Click end in your final snippet,
         // so I am preserving exactly what you provided.
@@ -1339,7 +1313,7 @@ namespace CNC_Improvements_gcode_solids.Pages
             try
             {
                 UiUtilities.CloseAllToolWindows();
-                
+
                 TryStoreSelectedTurnSetRegionFromEditor(out _);
 
                 var main = GetMain();
@@ -1506,10 +1480,10 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             string exText = GetSnap(set, KEY_ENDX, "");
             string ezText = GetSnap(set, KEY_ENDZ, "");
 
-            int sx = TextSearching.FindSingleLine(allLines, sxText, start, end, preferLast: false);
-            int sz = TextSearching.FindSingleLine(allLines, szText, start, end, preferLast: false);
-            int ex = TextSearching.FindSingleLine(allLines, exText, start, end, preferLast: true);
-            int ez = TextSearching.FindSingleLine(allLines, ezText, start, end, preferLast: true);
+            int sx = GeneralNormalizers.FindSingleLine(allLines, sxText, start, end, preferLast: false);
+            int sz = GeneralNormalizers.FindSingleLine(allLines, szText, start, end, preferLast: false);
+            int ex = GeneralNormalizers.FindSingleLine(allLines, exText, start, end, preferLast: true);
+            int ez = GeneralNormalizers.FindSingleLine(allLines, ezText, start, end, preferLast: true);
 
             if (sx < 0) throw new Exception("StartX marker line not found in resolved region.");
             if (sz < 0) throw new Exception("StartZ marker line not found in resolved region.");
@@ -1558,8 +1532,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             var exportClosed = TurningProfileComposer.ComposeClosedShape(exportProfileOpen, exportClosing3);
             return (exportClosed, exportLabel);
         }
-
-        // Your pasted file ends at BtnTurnEditor_Click, keep as-is:
         private void BtnTurnEditor_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -1581,7 +1553,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
         }
 
         // -------------------------
-        // PLACEHOLDER: Your original file continues with additional methods
         // (BuildClosedShapeFromSelection, ExportTurnSelectionCore, ViewProfile, ViewAll, etc.)
         // You pasted those earlier in this message, but not re-pasted after my rewrite point.
         // Keep them unchanged except where they called FindIndexByMarkerText... (now replaced above).
@@ -1737,174 +1708,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             return (startX, startZ);
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private static bool TryStripLeadingLineNumber(string? s, out string result)
-        {
-            result = s ?? "";
-            if (string.IsNullOrEmpty(result))
-                return false;
-
-            int i = 0;
-            while (i < result.Length && char.IsWhiteSpace(result[i]))
-                i++;
-
-            int startDigits = i;
-            while (i < result.Length && char.IsDigit(result[i]))
-                i++;
-
-            // no digits -> no prefix
-            if (i == startDigits)
-                return false;
-
-            while (i < result.Length && char.IsWhiteSpace(result[i]))
-                i++;
-
-            if (i >= result.Length || result[i] != ':')
-                return false;
-
-            i++; // past ':'
-            while (i < result.Length && char.IsWhiteSpace(result[i]))
-                i++;
-
-            result = result.Substring(i);
-            return true;
-        }
-
-        private static string NormalizeLineForMatch(string? s)
-        {
-            if (string.IsNullOrEmpty(s))
-                return "";
-
-            // normalize line endings only
-            string t = s.Replace("\r", "").Replace("\n", "");
-
-            // remove optional "1234:" prefix
-            TryStripLeadingLineNumber(t, out t);
-
-            // trim, then collapse ALL whitespace runs to a single space
-            t = t.Trim();
-            if (t.Length == 0)
-                return "";
-
-            // manual collapse (no regex surprises)
-            var sb = new System.Text.StringBuilder(t.Length);
-            bool inWs = false;
-
-            for (int i = 0; i < t.Length; i++)
-            {
-                char c = t[i];
-                if (char.IsWhiteSpace(c))
-                {
-                    inWs = true;
-                    continue;
-                }
-
-                if (inWs && sb.Length > 0)
-                    sb.Append(' ');
-
-                sb.Append(c);
-                inWs = false;
-            }
-
-            return sb.ToString();
-        }
-
-
-
-        
-
-        
-
-      
-
-        
-
-
-
-        // -----------------------------------------------------
-        // Region matching (RegionLines block): same rule per line
-        // -----------------------------------------------------
-
-        private static List<(int start, int end)> FindRegionMatches(List<string> allLines, ObservableCollection<string> regionLines)
-        {
-            var matches = new List<(int start, int end)>();
-
-            if (allLines == null || allLines.Count == 0)
-                return matches;
-
-            if (regionLines == null || regionLines.Count == 0)
-                return matches;
-
-            int n = regionLines.Count;
-            if (n > allLines.Count)
-                return matches;
-
-            // Pre-normalize the needle using SAME rule
-            var needle = new string[n];
-            for (int i = 0; i < n; i++)
-            {
-                needle[i] = NormalizeLineForMatch(regionLines[i]);
-                if (needle[i].Length == 0)
-                    return matches; // invalid stored region line -> no match
-            }
-
-            for (int start = 0; start <= allLines.Count - n; start++)
-            {
-                bool ok = true;
-
-                for (int j = 0; j < n; j++)
-                {
-                    string got = NormalizeLineForMatch(allLines[start + j]);
-                    if (!string.Equals(got, needle[j], StringComparison.OrdinalIgnoreCase))
-                    {
-                        ok = false;
-                        break;
-                    }
-                }
-
-                if (ok)
-                    matches.Add((start, start + n - 1));
-            }
-
-            return matches;
-        }
-
-        
-
-
-
-
-
-
-       
-
-        private static string StripLineNoIfPresent(string? s)
-        {
-            string t = (s ?? "").Replace("\r", "").Replace("\n", "");
-            TryStripLeadingLineNumber(t, out string stripped);
-            return stripped;
-        }
-
-
-        
+        // (Older ad-hoc matching helpers were removed to keep Turn aligned with Mill/Drill.)
 
         // ============================================================
         // Core exporter used by BOTH single and batch.
@@ -1965,11 +1769,9 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 string txtPath = Path.Combine(exportDir, exportBaseName + ".txt");
                 string stepPath = Path.Combine(exportDir, exportBaseName + "_Turn_stp.stp");
 
-
                 if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
                 { File.WriteAllLines(txtPath, exportClosedShape); }
                 // Overwrite allowed always
-
 
                 // Set FreeCAD paths
                 FreeCadScript.ProfilePth = txtPath;
@@ -1984,8 +1786,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                     FreeCadScript.Profile = FreeCadScript.Profile + Cr;
                 }
 
-
-
                 // Run FreeCAD (batch-safe: failure returns false, no MessageBox here)
                 try
                 {
@@ -1997,6 +1797,8 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 }
 
                 // ------------------------------------------------------------
+
+
                 // EXPORT-ALL REGISTRATION (authoritative list)
                 // Only register AFTER successful FreeCAD export.
                 // De-dupe defensively (case-insensitive).
@@ -2045,9 +1847,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             }
         }
 
-
-
-
         private static string MakeSafeFileName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -2068,7 +1867,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
             return s;
         }
-
 
         private void G41_click(object sender, RoutedEventArgs e)
         {
@@ -2117,7 +1915,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             UpdateQuadrantButtonVisuals(_toolComp.Quadrant);
             StoreTurnParamsIntoSelectedSet();
         }
-
 
         // ============================================================
         // NEW: Always re-sync selected TURN set before any viewer run.
@@ -2244,7 +2041,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
             return (closedShape, region, moves, profileShape, closingShape);
         }
-
 
         private void BtnViewProfile_Click(object sender, RoutedEventArgs e)
         {
@@ -2381,7 +2177,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             }
         }
 
-
         // ===============================
         // VIEW ALL TURN SETS (silent build)
         // ===============================
@@ -2442,8 +2237,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 MessageBox.Show(ex.Message, "VIEW ALL Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
-
 
         private string BuildAllTurnSetsDisplayScript(
     ObservableCollection<RegionSet> turnSets,
@@ -2570,13 +2363,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
             return sb.ToString();
         }
-
-
-
-
-
-
-
 
     }
 }

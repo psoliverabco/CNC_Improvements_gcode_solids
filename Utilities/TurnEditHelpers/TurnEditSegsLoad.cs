@@ -604,7 +604,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             // - strips leading "#...#" (this includes your "#uid,n#" anchors)
             // - removes whitespace
             // - uppercases
-            if (!TextSearching.FindMultiLine(allLines, regionLines, out int s, out int e, out int matchCount))
+            if (!GeneralNormalizers.FindMultiLine(allLines, regionLines, out int s, out int e, out int matchCount))
                 return false;
 
             if (matchCount != 1)
@@ -643,7 +643,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
 
             // Uses TextSearching normalization, so it matches even if markerText has "#uid,n#"
             // and editor lines do not, and even if spacing/tag alignment differs.
-            return TextSearching.FindSingleLine(lines, markerText, start, end, preferLast: false);
+            return GeneralNormalizers.FindSingleLine(lines, markerText, start, end, preferLast: false);
         }
 
 
