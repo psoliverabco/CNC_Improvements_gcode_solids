@@ -85,12 +85,16 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
         // Multi-line block match:
         // allLines are raw editor lines
         // regionLines are stored anchored lines (#uid,n#NORMALIZED...)
+        // If rangeStart/rangeEnd invalid (<0 or out of bounds) => searches whole list.
+        // Range is inclusive: [rangeStart..rangeEnd]
         public static bool FindMultiLine(
             IReadOnlyList<string> allLines,
             ObservableCollection<string> regionLinesAnchored,
             out int startIndex,
             out int endIndex,
-            out int matchCount)
+            out int matchCount,
+            int rangeStart = -1,
+            int rangeEnd = -1)
         {
             startIndex = -1;
             endIndex = -1;
@@ -115,12 +119,28 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
                     return false;
             }
 
-            // Pre-normalize haystack once
+            // Determine inclusive search range
+            int lo = rangeStart;
+            int hi = rangeEnd;
+
+            if (lo < 0 || hi < 0 || lo >= allLines.Count || hi >= allLines.Count || hi < lo)
+            {
+                lo = 0;
+                hi = allLines.Count - 1;
+            }
+
+            // Range window must be at least n lines
+            if (hi - lo + 1 < n)
+                return false;
+
+            int lastStart = hi - n + 1;
+
+            // Pre-normalize haystack once (full list)
             var hay = new string[allLines.Count];
             for (int i = 0; i < allLines.Count; i++)
                 hay[i] = BuiltRegionNormalizers.NormalizeTextLineToGcodeAndEndTag(allLines[i] ?? "");
 
-            for (int s = 0; s <= hay.Length - n; s++)
+            for (int s = lo; s <= lastStart; s++)
             {
                 bool ok = true;
 
@@ -147,5 +167,6 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
 
             return matchCount > 0;
         }
+
     }
 }

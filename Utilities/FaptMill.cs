@@ -6,134 +6,257 @@ using System.Linq;
 
 namespace CNC_Improvements_gcode_solids.Utilities
 {
-    /// <summary>
-    /// MILL FAPT support (G1062 ... G1206).
-    /// For now: translator is a placeholder returning a fixed sample block.
-    /// </summary>
     internal static class FaptMill
     {
-        public static List<string> TextToLines_All(string allText)
+        internal static List<string> TextToLines_All(string text)
         {
-            if (allText == null) allText = "";
-            allText = allText.Replace("\r\n", "\n").Replace("\r", "\n");
-
-            var lines = allText.Split('\n')
-                               .Select(s => (s ?? "").TrimEnd())
-                               .ToList();
-
-            // Drop final empty line if RTB adds one
-            while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
-                lines.RemoveAt(lines.Count - 1);
-
-            return lines;
+            if (text == null) text = "";
+            text = text.Replace("\r\n", "\n").Replace("\r", "\n");
+            return text.Split('\n').ToList();
         }
 
-        /// <summary>
-        /// Build MILL regions:
-        ///  - region starts at a line containing "(G1062"
-        ///  - region ends at a line containing "(G1206" (inclusive)
-        /// </summary>
-        public static List<List<string>> BuildFaptMillRegions(List<string> lines)
+        // MILL regions:
+        // Start: line contains "(G106" (typically G1062 / G1063)
+        // End:   first "(G1206" line (inclusive)
+        internal static List<List<string>> BuildFaptMillRegions(List<string> lines)
         {
             var regions = new List<List<string>>();
-            if (lines == null || lines.Count == 0)
-                return regions;
+            if (lines == null) return regions;
 
             int i = 0;
             while (i < lines.Count)
             {
-                string line = lines[i] ?? "";
-                if (line.IndexOf("(G1062", StringComparison.OrdinalIgnoreCase) >= 0)
+                string s0 = (lines[i] ?? "").Trim();
+                if (s0.Length == 0) { i++; continue; }
+
+                // Must be a MILL header line
+                if (!Contains(s0, "(G106"))
                 {
-                    var reg = new List<string>();
-                    reg.Add(line);
-
                     i++;
-
-                    while (i < lines.Count)
-                    {
-                        string l2 = lines[i] ?? "";
-                        reg.Add(l2);
-
-                        if (l2.IndexOf("(G1206", StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            i++; // move past end marker
-                            break;
-                        }
-
-                        i++;
-                    }
-
-                    regions.Add(reg);
                     continue;
                 }
 
-                i++;
+                var region = new List<string>();
+                region.Add(lines[i] ?? "");
+
+                int j = i + 1;
+                while (j < lines.Count)
+                {
+                    string t = lines[j] ?? "";
+                    region.Add(t);
+
+                    if (Contains(t, "(G1206"))
+                        break;
+
+                    j++;
+                }
+
+                regions.Add(region);
+                i = j + 1;
             }
 
             return regions;
         }
 
         /// <summary>
-        /// Placeholder translator: returns the fixed sample toolpath you provided.
-        /// NOTE: This is NOT yet parsing the region text.
+        /// Translate ONE selected MILL FAPT region (raw lines) into MILL XY G-code.
+        ///
+        /// Rules (matching your notes + the observed Fanuc output):
+        /// - Start line we care about is (G1200 ... H.. V.. L..)
+        ///     H = start X
+        ///     V = start Y
+        ///     L = Z plane (depth), emit FIRST as:  G0 Z{L}
+        /// - Then emit start XY as: G0 X{H} Y{V}
+        /// - For each motion line:
+        ///     - Endpoint is H,V  => X,Y
+        ///     - Center is I,J (ABSOLUTE center coords) when present
+        ///     - Direction is computed from geometry:
+        ///           cross > 0 => CCW => G3
+        ///           cross < 0 => CW  => G2
+        ///     - Output I/J in *incremental* form from start point (Fanuc style)
+        /// - Stops at (G1206) (inclusive, but not emitted as motion)
+        /// - Feed F: from the (G106x...) header if present (F####)
         /// </summary>
-        public static List<string> TranslateFaptRegionToMillGcode(List<string> regionLines)
-        {
-            return new List<string>
-            {
-                "G0  X169.000000   Y0.000000",
-                "Z-14",
-                "G2  X168.995120   Y-1.284475   I-169.000000  J0.000026",
-                "G2  X161.439070   Y-10.905300  I-9.999710    J0.076006",
-                "G2  X148.720600   Y-13.490050  I-34.211240   J135.755630",
-                "G3  X137.910390   Y-24.098248  I1.995750     J-12.845893",
-                "G2  X129.680750   Y-52.753243  I-137.910385  J24.098250",
-                "G3  X133.158640   Y-67.432336  I12.041780    J-4.898515",
-                "G2  X142.563020   Y-76.325651  I-111.330648  J-127.147504",
-                "G2  X143.935850   Y-88.563375  I-7.144080    J-6.997290",
-                "G2  X142.635330   Y-90.643062  I-143.935870  J88.563340",
-                "G2  X131.129170   Y-94.797890  I-8.439970    J5.363493",
-                "G2  X118.973580   Y-90.250119  I42.926750    J133.256497",
-                "G3  X104.184520   Y-93.517843  I-5.114790    J-11.951521",
-                "G2  X89.735155    Y-107.459770 I-104.184510  J93.517850",
-                "G3  X85.914531    Y-122.053410 I8.332549     J-9.978410"
-            };
-        }
-
-        public static List<string> FormatMillGcodeBlock(string name, List<string> rawGcode, char alpha)
+        internal static List<string> TranslateFaptRegionToMillGcode(List<string> regionLines)
         {
             var outLines = new List<string>();
-            if (rawGcode == null) rawGcode = new List<string>();
+            if (regionLines == null || regionLines.Count == 0)
+                return outLines;
 
-            // wrapper
-            outLines.Add($"({name} ST)");
-
-            // tag formatting (match your style: (m:a0000) etc)
-            const int TAG_PAD_COLUMN = 75;
-
-            int n = 0;
-            for (int i = 0; i < rawGcode.Count; i++)
+            // Feed from G106x header (optional)
+            double? feed = null;
             {
-                string gl = (rawGcode[i] ?? "").TrimEnd();
-                if (string.IsNullOrWhiteSpace(gl))
-                    continue;
-
-                string tag = $"(m:{alpha}{n.ToString("0000", CultureInfo.InvariantCulture)})";
-                n++;
-
-                // pad so tag starts around column 75
-                int pad = TAG_PAD_COLUMN - gl.Length;
-                if (pad < 1) pad = 1;
-
-                outLines.Add(gl + new string(' ', pad) + tag);
+                string hdr = (regionLines[0] ?? "").Trim().ToUpperInvariant();
+                if (hdr.Contains("(G106"))
+                {
+                    if (TryGetParam(hdr, 'F', out double fVal))
+                        feed = fVal;
+                }
             }
 
-            outLines.Add($"({name} END)");
+            // Find first G1200
+            string g1200 = null;
+            for (int i = 0; i < regionLines.Count; i++)
+            {
+                string u = (regionLines[i] ?? "").Trim();
+                if (u.Length == 0) continue;
+
+                string uu = u.ToUpperInvariant();
+                if (uu.Contains("(G1200") || uu.Contains("G1200"))
+                {
+                    g1200 = u;
+                    break;
+                }
+            }
+
+            if (g1200 == null)
+                return outLines;
+
+            if (!TryGetParam(g1200, 'H', out double curX) || !TryGetParam(g1200, 'V', out double curY))
+                return outLines;
+
+            // L is Z plane (depth) per your note. If missing, leave it out.
+            if (TryGetParam(g1200, 'L', out double zPlane))
+            {
+                outLines.Add(string.Format(CultureInfo.InvariantCulture, "G0Z{0:0.####}", zPlane));
+            }
+
+            // Rapid to XY start
+            outLines.Add(string.Format(CultureInfo.InvariantCulture, "G0X{0:0.####}Y{1:0.####}", curX, curY));
+
+            // Walk subsequent lines until G1206
+            for (int i = 0; i < regionLines.Count; i++)
+            {
+                string ln = (regionLines[i] ?? "").Trim();
+                if (ln.Length == 0) continue;
+
+                string u = ln.ToUpperInvariant();
+
+                if (u.Contains("(G1206") || u.Contains("G1206"))
+                    break;
+
+                // We handle arc-ish records: G1202 / G1203 / G1205
+                bool isArc =
+                    u.Contains("G1202") ||
+                    u.Contains("G1203") ||
+                    u.Contains("G1205");
+
+                if (!isArc)
+                    continue;
+
+                // Endpoint H,V
+                if (!TryGetParam(u, 'H', out double endX) || !TryGetParam(u, 'V', out double endY))
+                    continue;
+
+                // ---- FIX: declare center vars up-front so they exist in this scope ----
+                double cenX = 0.0;
+                double cenY = 0.0;
+                bool hasCenter = TryGetParam(u, 'I', out cenX) && TryGetParam(u, 'J', out cenY);
+                // ---------------------------------------------------------------
+
+                if (!hasCenter)
+                {
+                    // Treat as straight if no center
+                    if (feed.HasValue)
+                        outLines.Add(string.Format(CultureInfo.InvariantCulture, "G1X{0:0.###}Y{1:0.###}F{2:0.###}", endX, endY, feed.Value));
+                    else
+                        outLines.Add(string.Format(CultureInfo.InvariantCulture, "G1X{0:0.###}Y{1:0.###}", endX, endY));
+
+                    curX = endX; curY = endY;
+                    continue;
+                }
+
+                // Determine CW/CCW from geometry around center
+                double ax = curX - cenX;
+                double ay = curY - cenY;
+                double bx = endX - cenX;
+                double by = endY - cenY;
+
+                double cross = (ax * by) - (ay * bx);
+                bool ccw = cross > 0.0;
+
+                string g = ccw ? "G3" : "G2";
+
+                // Incremental IJ from start
+                double iInc = cenX - curX;
+                double jInc = cenY - curY;
+
+                if (feed.HasValue)
+                {
+                    outLines.Add(string.Format(CultureInfo.InvariantCulture,
+                        "{0}X{1:0.###}Y{2:0.###}I{3:0.###}J{4:0.###}F{5:0.###}",
+                        g, endX, endY, iInc, jInc, feed.Value));
+                }
+                else
+                {
+                    outLines.Add(string.Format(CultureInfo.InvariantCulture,
+                        "{0}X{1:0.###}Y{2:0.###}I{3:0.###}J{4:0.###}",
+                        g, endX, endY, iInc, jInc));
+                }
+
+                curX = endX; curY = endY;
+            }
+
             return outLines;
         }
 
 
+        private static bool Contains(string s, string needle)
+        {
+            return !string.IsNullOrEmpty(s) &&
+                   s.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
+        /// <summary>
+        /// Pull a numeric parameter from a FAPT line.
+        /// Works with tokens like H-2.4, V167.5, F.3, etc.
+        /// </summary>
+        private static bool TryGetParam(string line, char key, out double value)
+        {
+            value = 0.0;
+            if (string.IsNullOrEmpty(line))
+                return false;
+
+            string s = line.ToUpperInvariant();
+            int idx = s.IndexOf(key);
+            if (idx < 0)
+                return false;
+
+            int i = idx + 1;
+            if (i >= s.Length)
+                return false;
+
+            int start = i;
+            bool sawAny = false;
+
+            if (s[i] == '+' || s[i] == '-')
+                i++;
+
+            while (i < s.Length)
+            {
+                char c = s[i];
+                if ((c >= '0' && c <= '9') || c == '.')
+                {
+                    sawAny = true;
+                    i++;
+                    continue;
+                }
+                break;
+            }
+
+            if (!sawAny)
+                return false;
+
+            string num = s.Substring(start, i - start);
+
+            if (num.StartsWith(".", StringComparison.Ordinal))
+                num = "0" + num;
+            if (num.StartsWith("+.", StringComparison.Ordinal))
+                num = "+0" + num.Substring(1);
+            if (num.StartsWith("-.", StringComparison.Ordinal))
+                num = "-0" + num.Substring(1);
+
+            return double.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        }
     }
 }

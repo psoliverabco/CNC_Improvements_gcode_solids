@@ -4567,7 +4567,7 @@ namespace CNC_Improvements_gcode_solids
             // TURN regions: (G112...) blocks
             var turnRegions = CNC_Improvements_gcode_solids.Utilities.FaptTurn.BuildFaptRegions(lines);
 
-            // MILL regions: (G1062...) .. (G1206)
+            // MILL regions: (G106....) .. (G1206)
             var millRegions = CNC_Improvements_gcode_solids.Utilities.FaptMill.BuildFaptMillRegions(lines);
 
             // Combine for selection dialog
@@ -4776,44 +4776,134 @@ namespace CNC_Improvements_gcode_solids
                 {
                     // MILL translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptMill.TranslateFaptRegionToMillGcode(regions[idx]);
+                    string strippedBaseName ="";
+                    // If the MILL FAPT header contains inline transform tokens, we must run ResolveTrans
+                    // on the GENERATED MILL GCODE (rawGcode), NOT on the FAPT text and NOT by searching editor text.
+                    bool hasTransformTokens =
+                        firstLine.IndexOf("#MIR", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        firstLine.IndexOf("#ROT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        firstLine.IndexOf("#LIN", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                    // Step 2: add unique endtag with NO spaces (m:<alpha><0000>)
-                    var taggedNoSpace = new List<string>();
-                    if (rawGcode != null)
+                    List<List<string>> millPaths;
+
+                    if (hasTransformTokens)
                     {
-                        int n = 0;
-                        for (int i = 0; i < rawGcode.Count; i++)
+                        // NEW CONTRACT:
+                        // ResolveTrans gets:
+                        //  - the header line (contains #MIR/#ROT/#LIN tokens)
+                        //  - the raw mill gcode we generated from FaptMill (XY motion etc)
+                        // It returns 1..N paths depending on chaining success (connected => 1; disconnected => many).
+                        millPaths = CNC_Improvements_gcode_solids.Utilities.ResolveTrans.ResolveTranslation(
+                            headerLineWithTokens: firstLine,
+                            rawMillGcode: rawGcode
+                        );
+
+                        sb.AppendLine("----- RESOLVETRANS PATHS (from GENERATED MILL GCODE) -----");
+                        if (millPaths == null || millPaths.Count == 0)
                         {
-                            string gl = (rawGcode[i] ?? "").TrimEnd();
+                            sb.AppendLine("(ResolveTrans returned no paths)");
+                            sb.AppendLine("");
+                            continue; // nothing to store/append
+                        }
+                        else
+                        {
+                            for (int bi = 0; bi < millPaths.Count; bi++)
+                            {
+                                var p = millPaths[bi] ?? new List<string>();
+                                sb.AppendLine($"(path {bi + 1} lines={p.Count})");
+                                foreach (var gl in p)
+                                    sb.AppendLine(gl);
+                            }
+                            sb.AppendLine("");
+                        }
+                    }
+                    else
+                    {
+                        // No transforms: single path is just the generated mill gcode
+                        millPaths = new List<List<string>>
+        {
+            rawGcode ?? new List<string>()
+        };
+                    }
+
+                    // Now store/append EACH returned path as its own MILL region:
+                    // - if 1 path => use "name"
+                    // - if multiple => use "name(1)", "name(2)", ...
+                    for (int pathIdx = 0; pathIdx < millPaths.Count; pathIdx++)
+                    {
+                        var pathRaw = millPaths[pathIdx] ?? new List<string>();
+                        if (pathRaw.Count == 0)
+                            continue;
+
+                        string nameThis = name;
+
+
+                        if (pathIdx > 0)
+                        {
+                            strippedBaseName = StripTransformTokens(name) + "(T" + pathIdx + ")";
+                            if (string.IsNullOrWhiteSpace(strippedBaseName))
+                                strippedBaseName = name; // fallback
+                        } else { strippedBaseName = name; }
+
+
+
+                        if (millPaths.Count > 1)
+                            nameThis = name + "(" + (pathIdx + 1).ToString(CultureInfo.InvariantCulture) + ")";
+
+                        // Step 2: add unique endtag with NO spaces (m:<alpha><0000>)
+                        var taggedNoSpace = new List<string>();
+                        int n = 0;
+                        for (int i = 0; i < pathRaw.Count; i++)
+                        {
+                            string gl = (pathRaw[i] ?? "").TrimEnd();
                             if (string.IsNullOrWhiteSpace(gl))
                                 continue;
 
                             string tag = "(m:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
                             taggedNoSpace.Add(gl + tag); // NO space
                             n++;
-                        }
-                    }
 
-                    sb.AppendLine("----- GENERATED MILL GCODE (tagged, no-space) -----");
-                    if (taggedNoSpace == null || taggedNoSpace.Count == 0)
-                    {
-                        sb.AppendLine("(no gcode generated)");
-                    }
-                    else
-                    {
-                        foreach (var gl in taggedNoSpace)
-                            sb.AppendLine(gl);
+
+
+                           
+                            
+
+
+
+                        }
+
+                        sb.AppendLine("----- GENERATED MILL GCODE (FINAL PATH, tagged, no-space) -----");
+                        sb.AppendLine("Name: " + nameThis);
+                        if (taggedNoSpace.Count == 0)
+                        {
+                            sb.AppendLine("(no gcode generated)");
+                            sb.AppendLine("");
+                            continue;
+                        }
+                        else
+                        {
+                            foreach (var gl in taggedNoSpace)
+                                sb.AppendLine(gl);
+                            sb.AppendLine("");
+                        }
 
                         // Step 3/4: create/edit via builder (builder adds UID,n anchors + stores markers)
-                        PickMillMarkerIndices(taggedNoSpace, out int planeZIndex, out int startXIndex, out int startYIndex, out int endXIndex, out int endYIndex);
+                        PickMillMarkerIndices(taggedNoSpace,
+                            out int planeZIndex,
+                            out int startXIndex,
+                            out int startYIndex,
+                            out int endXIndex,
+                            out int endYIndex);
 
                         RegionSet rs;
-                        var existing = FindMillSetByName(name);
+                        var existing = FindMillSetByName(nameThis);
+
+
 
                         if (existing == null)
                         {
                             rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildMillRegion.Create(
-                                regionName: name,
+                                regionName: strippedBaseName,
                                 regionLines: taggedNoSpace,
                                 planeZIndex: planeZIndex,
                                 startXIndex: startXIndex,
@@ -4860,7 +4950,7 @@ namespace CNC_Improvements_gcode_solids
 
                         // Step 5: build RTB insert from the *stored* region lines
                         var insert = new List<string>();
-                        insert.Add("(" + name + " ST)");
+                        insert.Add("(" + nameThis + " ST)");
                         for (int i = 0; i < rs.RegionLines.Count; i++)
                         {
                             string stored = rs.RegionLines[i] ?? "";
@@ -4869,12 +4959,15 @@ namespace CNC_Improvements_gcode_solids
                             if (!string.IsNullOrWhiteSpace(aligned))
                                 insert.Add(aligned);
                         }
-                        insert.Add("(" + name + " END)");
+                        insert.Add("(" + nameThis + " END)");
 
                         blocksToAppend.AddRange(insert);
                         blocksToAppend.Add("");
                     }
                 }
+
+
+
 
                 sb.AppendLine("");
             }
@@ -4889,8 +4982,36 @@ namespace CNC_Improvements_gcode_solids
                 TxtGcode.Document.Blocks.Add(new Paragraph(new Run(appendText)));
                 TxtGcode.ScrollToEnd();
             }
+
+
+
+
         }
 
+        // Strip any inline transform tokens from the region name.
+        // Example: "GO2 #ROT,100,0,20,5#" => "GO2"
+       private string StripTransformTokens(string s)
+        {
+            s = (s ?? "");
+
+            // Remove all "#...#" blocks (repeat until none remain)
+            while (true)
+            {
+                int a = s.IndexOf('#');
+                if (a < 0) break;
+                int b = s.IndexOf('#', a + 1);
+                if (b < 0) break; // unmatched, stop
+
+                s = s.Remove(a, (b - a) + 1);
+            }
+
+            // Clean whitespace
+            s = s.Replace('\t', ' ');
+            while (s.Contains("  "))
+                s = s.Replace("  ", " ");
+
+            return s.Trim();
+        }
 
 
 

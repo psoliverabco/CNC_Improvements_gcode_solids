@@ -561,7 +561,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     s.Contains("(G1125") ||
                     s.Contains("(G1126") ||
                     s.Contains("(G1127") ||
-                    s.Contains("(G1128");
+                    s.Contains("(G1128") ||
+                    s.Contains("(G112");
 
 
 

@@ -179,21 +179,21 @@ namespace CNC_Improvements_gcode_solids.Pages
                 int rangeEnd = set.ResolvedEndLine ?? -1;
 
                 // Start markers: first match in range
-                startXIndex = GeneralNormalizers.FindSingleLine(lines, sxText, rangeStart, rangeEnd, preferLast: false);
-                startZIndex = GeneralNormalizers.FindSingleLine(lines, szText, rangeStart, rangeEnd, preferLast: false);
+                startXIndex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, sxText, rangeStart, rangeEnd, preferLast: false);
+                startZIndex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, szText, rangeStart, rangeEnd, preferLast: false);
 
                 // End markers: last match in range (fixes "same line" when start/end text identical)
-                endXIndex = GeneralNormalizers.FindSingleLine(lines, exText, rangeStart, rangeEnd, preferLast: true);
-                endZIndex = GeneralNormalizers.FindSingleLine(lines, ezText, rangeStart, rangeEnd, preferLast: true);
+                endXIndex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, exText, rangeStart, rangeEnd, preferLast: true);
+                endZIndex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, ezText, rangeStart, rangeEnd, preferLast: true);
 
                 // If region isn't resolved, fall back to global search for markers (best-effort)
                 if (rangeStart < 0 || rangeEnd < 0)
                 {
-                    startXIndex = (startXIndex >= 0) ? startXIndex : GeneralNormalizers.FindSingleLine(lines, sxText, -1, -1, preferLast: false);
-                    startZIndex = (startZIndex >= 0) ? startZIndex : GeneralNormalizers.FindSingleLine(lines, szText, -1, -1, preferLast: false);
+                    startXIndex = (startXIndex >= 0) ? startXIndex : SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, sxText, -1, -1, preferLast: false);
+                    startZIndex = (startZIndex >= 0) ? startZIndex : SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, szText, -1, -1, preferLast: false);
 
-                    endXIndex = (endXIndex >= 0) ? endXIndex : GeneralNormalizers.FindSingleLine(lines, exText, -1, -1, preferLast: true);
-                    endZIndex = (endZIndex >= 0) ? endZIndex : GeneralNormalizers.FindSingleLine(lines, ezText, -1, -1, preferLast: true);
+                    endXIndex = (endXIndex >= 0) ? endXIndex : SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, exText, -1, -1, preferLast: true);
+                    endZIndex = (endZIndex >= 0) ? endZIndex : SetManagement.Builders.BuiltRegionSearches.FindSingleLine(lines, ezText, -1, -1, preferLast: true);
                 }
             }
             finally
@@ -347,10 +347,10 @@ namespace CNC_Improvements_gcode_solids.Pages
             }
 
             // Find markers globally (best-effort)
-            int sx = GeneralNormalizers.FindSingleLine(allLines, sxText, -1, -1, preferLast: false);
-            int sz = GeneralNormalizers.FindSingleLine(allLines, szText, -1, -1, preferLast: false);
-            int ex = GeneralNormalizers.FindSingleLine(allLines, exText, -1, -1, preferLast: true);
-            int ez = GeneralNormalizers.FindSingleLine(allLines, ezText, -1, -1, preferLast: true);
+            int sx = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, sxText, -1, -1, preferLast: false);
+            int sz = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, szText, -1, -1, preferLast: false);
+            int ex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, exText, -1, -1, preferLast: true);
+            int ez = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, ezText, -1, -1, preferLast: true);
 
             if (sx < 0 || sz < 0 || ex < 0 || ez < 0)
             {
@@ -1480,10 +1480,10 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             string exText = GetSnap(set, KEY_ENDX, "");
             string ezText = GetSnap(set, KEY_ENDZ, "");
 
-            int sx = GeneralNormalizers.FindSingleLine(allLines, sxText, start, end, preferLast: false);
-            int sz = GeneralNormalizers.FindSingleLine(allLines, szText, start, end, preferLast: false);
-            int ex = GeneralNormalizers.FindSingleLine(allLines, exText, start, end, preferLast: true);
-            int ez = GeneralNormalizers.FindSingleLine(allLines, ezText, start, end, preferLast: true);
+            int sx = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, sxText, start, end, preferLast: false);
+            int sz = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, szText, start, end, preferLast: false);
+            int ex = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, exText, start, end, preferLast: true);
+            int ez = SetManagement.Builders.BuiltRegionSearches.FindSingleLine(allLines, ezText, start, end, preferLast: true);
 
             if (sx < 0) throw new Exception("StartX marker line not found in resolved region.");
             if (sz < 0) throw new Exception("StartZ marker line not found in resolved region.");

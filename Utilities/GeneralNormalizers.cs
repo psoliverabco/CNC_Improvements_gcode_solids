@@ -20,6 +20,43 @@ namespace CNC_Improvements_gcode_solids.Utilities
     {
 
 
+        /// <summary>
+        /// Strip optional leading "1234:" line-number prefix, and strip ALL "(...)" comment blocks
+        /// anywhere on the line (e.g. "(u:a0001)").
+        /// Returns the remaining text trimmed.
+        /// </summary>
+        public static string StripLineNumberPrefixAndParenComments(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+                return "";
+
+            string s = line;
+
+            // 1) Remove leading "nnnn:" (allow whitespace)
+            // Examples:
+            // "  80: G1X1Y2" -> "G1X1Y2"
+            // "80:G1X1Y2"    -> "G1X1Y2"
+            s = System.Text.RegularExpressions.Regex.Replace(
+                s,
+                @"^\s*\d+\s*:\s*",
+                "",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant
+            );
+
+            // 2) Remove ALL "(...)" blocks anywhere on the line
+            // This is intentionally "dumb but safe" for your use-case:
+            // it nukes "(G1206)" too, which is fine because we already used that line as a marker
+            // and we only want motion parsing lines after it.
+            s = System.Text.RegularExpressions.Regex.Replace(
+                s,
+                @"\([^)]*\)",
+                "",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant
+            );
+
+            // 3) Trim
+            return (s ?? "").Trim();
+        }
 
 
         private static bool TryStripLeadingLineNumber(string? s, out string result)
@@ -211,116 +248,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             return new string(chars, 0, n).ToUpperInvariant();
         }
 
-        public static int FindSingleLine(
-            List<string> lines,
-            string needleStoredOrRaw,
-            int rangeStart = -1,
-            int rangeEnd = -1,
-            bool preferLast = false)
-        {
-            if (lines == null || lines.Count == 0)
-                return -1;
-
-            string want = NormalizeTextLineToGcodeAndEndTag(needleStoredOrRaw);
-            if (string.IsNullOrEmpty(want))
-                return -1;
-
-            int lo = Math.Max(0, rangeStart);
-            int hi = (rangeEnd >= 0) ? Math.Min(lines.Count - 1, rangeEnd) : (lines.Count - 1);
-            if (lo > hi)
-                return -1;
-
-            if (!preferLast)
-            {
-                for (int i = lo; i <= hi; i++)
-                {
-                    if (NormalizeTextLineToGcodeAndEndTag(lines[i]) == want)
-                        return i;
-                }
-            }
-            else
-            {
-                for (int i = hi; i >= lo; i--)
-                {
-                    if (NormalizeTextLineToGcodeAndEndTag(lines[i]) == want)
-                        return i;
-                }
-            }
-
-            return -1;
-        }
-
-        public static bool FindMultiLine(
-            List<string> allLines,
-            IList<string> storedRegionLines,
-            out int start,
-            out int end,
-            out int matchCount,
-            int rangeStart = -1,
-            int rangeEnd = -1)
-        {
-            start = -1;
-            end = -1;
-            matchCount = 0;
-
-            if (allLines == null || allLines.Count == 0)
-                return false;
-
-            if (storedRegionLines == null || storedRegionLines.Count == 0)
-                return false;
-
-            int n = storedRegionLines.Count;
-            if (n > allLines.Count)
-                return false;
-
-            var needle = new string[n];
-            for (int i = 0; i < n; i++)
-            {
-                needle[i] = NormalizeTextLineToGcodeAndEndTag(storedRegionLines[i]);
-                if (needle[i].Length == 0)
-                    return false;
-            }
-
-            int lo = Math.Max(0, rangeStart);
-            int hi = (rangeEnd >= 0) ? Math.Min(allLines.Count - 1, rangeEnd) : (allLines.Count - 1);
-
-            if (hi - lo + 1 < n)
-                return false;
-
-            int lastStart = hi - n + 1;
-
-            for (int s = lo; s <= lastStart; s++)
-            {
-                bool ok = true;
-
-                for (int j = 0; j < n; j++)
-                {
-                    string got = NormalizeTextLineToGcodeAndEndTag(allLines[s + j]);
-                    if (got != needle[j])
-                    {
-                        ok = false;
-                        break;
-                    }
-                }
-
-                if (!ok)
-                    continue;
-
-                matchCount++;
-
-                if (matchCount == 1)
-                {
-                    start = s;
-                    end = s + n - 1;
-                }
-            }
-
-            return matchCount > 0;
-        }
-
-
-
-
+       
         
 
 
