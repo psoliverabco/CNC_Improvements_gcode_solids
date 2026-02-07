@@ -977,7 +977,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 {
                     SelectionMode = SelectionMode.Extended,
                     Background = new SolidColorBrush(Color.FromRgb(0x0D, 0x0D, 0x0D)),
-                    Foreground = Brushes.LightGray,
+                    Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                     BorderThickness = new Thickness(1),
                     FontFamily = new FontFamily("Consolas"),
@@ -1762,7 +1762,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var tbLabel = new TextBlock
             {
                 Text = label,
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 Margin = new Thickness(0, 0, 0, 6)
             };
             Grid.SetRow(tbLabel, 0);
@@ -2400,7 +2400,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var tb = new TextBlock
             {
                 Text = "Create line through selected endpoint:",
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 Margin = new Thickness(0, 0, 0, 12)
             };
             Grid.SetRow(tb, 0);
@@ -2482,7 +2482,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var tb = new TextBlock
             {
                 Text = "Create line through WORLD point (X radius, Z):",
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 Margin = new Thickness(0, 0, 0, 10)
             };
             Grid.SetRow(tb, 0);
@@ -2497,7 +2497,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var lblX = new TextBlock
             {
                 Text = "X:",
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0)
             };
@@ -2517,7 +2517,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var lblZ = new TextBlock
             {
                 Text = "Z:",
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0)
             };

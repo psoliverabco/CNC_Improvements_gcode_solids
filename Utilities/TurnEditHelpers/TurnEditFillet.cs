@@ -1,4 +1,5 @@
 ﻿// File: Utilities/TurnEditHelpers/TurnEditFillet.cs
+using CNC_Improvements_gcode_solids.Properties;
 using CNC_Improvements_gcode_solids.Utilities; // TurnEditArcLaw
 using System;
 using System.Collections.Generic;
@@ -35,6 +36,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
         // ------------------------------------------------------------
         internal enum SegKind { Line, Arc }
 
+       
         internal sealed class SegView
         {
             public SegKind Kind;
@@ -54,6 +56,17 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             public SegView Seg = null!;
             public Point PickEndWorld;   // chosen endpoint (X,Z)
         }
+
+
+
+
+
+
+       
+
+
+
+
 
         // ------------------------------------------------------------
         // Public entry
@@ -115,7 +128,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             row0.Children.Add(new TextBlock
             {
                 Text = "Radius:",
-                Foreground = Brushes.LightGray,
+                Foreground =   UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 Width = 70,
                 VerticalAlignment = VerticalAlignment.Center
             });
@@ -137,7 +150,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             var txtInfo = new TextBlock
             {
                 Text = "Candidates: 0",
-                Foreground = Brushes.Yellow,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 FontFamily = new FontFamily("Consolas"),
                 Margin = new Thickness(0, 0, 0, 10)
             };
@@ -164,7 +177,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             //var chkTrim = new CheckBox
            // {
               //  Content = "Trim",
-              //  Foreground = Brushes.LightGray,
+              //  Foreground = _graphicText,
               //  VerticalAlignment = VerticalAlignment.Center,
               //  IsChecked = false
            // };
@@ -196,7 +209,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             var hint = new TextBlock
             {
                 Text = "Shows FILLET ARC candidates (50% opacity). Cycle highlights one (100%). Keep returns the highlighted candidate as ARC3_* region input text.",
-                Foreground = Brushes.LightGray
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor)
             };
             Grid.SetRow(hint, 3);
             root.Children.Add(hint);

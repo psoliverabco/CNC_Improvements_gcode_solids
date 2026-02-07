@@ -18,7 +18,7 @@
 
         <TextBlock Grid.Row="0"
                    Text="Output format: #AARRGGBB"
-                   Foreground="#DDD"
+                   
                    FontFamily="Consolas"
                    Margin="0,0,0,10"/>
 
@@ -61,21 +61,21 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="A" Foreground="#DDD" VerticalAlignment="Center"/>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="A"  VerticalAlignment="Center"/>
             <Slider x:Name="SlA" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
-            <TextBlock x:Name="TxtA" Grid.Row="0" Grid.Column="2" Text="255" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+            <TextBlock x:Name="TxtA" Grid.Row="0" Grid.Column="2" Text="255"  HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="R" Foreground="#DDD" VerticalAlignment="Center"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="R"  VerticalAlignment="Center"/>
             <Slider x:Name="SlR" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
-            <TextBlock x:Name="TxtR" Grid.Row="1" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+            <TextBlock x:Name="TxtR" Grid.Row="1" Grid.Column="2" Text="0"  HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="G" Foreground="#DDD" VerticalAlignment="Center"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="G"  VerticalAlignment="Center"/>
             <Slider x:Name="SlG" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
-            <TextBlock x:Name="TxtG" Grid.Row="2" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+            <TextBlock x:Name="TxtG" Grid.Row="2" Grid.Column="2" Text="0"  HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
 
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="B" Foreground="#DDD" VerticalAlignment="Center"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="B"  VerticalAlignment="Center"/>
             <Slider x:Name="SlB" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="Slider_ValueChanged" />
-            <TextBlock x:Name="TxtB" Grid.Row="3" Grid.Column="2" Text="0" Foreground="#DDD" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+            <TextBlock x:Name="TxtB" Grid.Row="3" Grid.Column="2" Text="0"  HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
         </Grid>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

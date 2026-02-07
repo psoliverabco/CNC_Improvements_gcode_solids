@@ -37,7 +37,7 @@ namespace CNC_Improvements_gcode_solids.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("#FF00FF00")]
+        [global::System.Configuration.DefaultSettingValueAttribute("#FFFFFF00")]
         public string ProfileColor {
             get {
                 return ((string)(this["ProfileColor"]));
@@ -109,13 +109,37 @@ namespace CNC_Improvements_gcode_solids.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("#FFFBFF3D")]
+        [global::System.Configuration.DefaultSettingValueAttribute("#FFFB1111")]
         public string GraphicTextColor {
             get {
                 return ((string)(this["GraphicTextColor"]));
             }
             set {
                 this["GraphicTextColor"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("#FF404040")]
+        public string GridColor {
+            get {
+                return ((string)(this["GridColor"]));
+            }
+            set {
+                this["GridColor"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public double GridWidth {
+            get {
+                return ((double)(this["GridWidth"]));
+            }
+            set {
+                this["GridWidth"] = value;
             }
         }
         

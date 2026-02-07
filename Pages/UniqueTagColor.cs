@@ -10,7 +10,7 @@ namespace CNC_Improvements_gcode_solids.Pages
 
         private static Brush CreateUniqueTagBrush()
         {
-            var b = new SolidColorBrush(Color.FromArgb(255, 255, 61, 245)); // LightSkyBlue-ish 50%
+            var b = new SolidColorBrush(Color.FromArgb(128, 135, 206, 250)); // LightSkyBlue @ ~50%
             b.Freeze();
             return b;
         }

@@ -117,9 +117,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // -----------------------------
         // Brushes/widths driven by Settings
         // -----------------------------
-        private Brush _profileStroke = Brushes.Lime;     // Settings.Default.ProfileColor
-        private Brush _offsetStroke = Brushes.Orange;    // Settings.Default.OffsetColor
-        private Brush _graphicText = Brushes.Yellow;     // Settings.Default.GraphicTextColor
+        private Brush _profileStroke = GraphicsPalette.ProfileBrush;   // Settings.Default.ProfileColor
+        private Brush _offsetStroke = GraphicsPalette.OffsetBrush;     // Settings.Default.OffsetColor
+        private Brush _graphicText = GraphicsPalette.GraphicTextBrush; // Settings.Default.GraphicTextColor
 
         private double _profileWidth = 1.5;              // Settings.Default.ProfileWidth
         private double _offsetWidth = 1.2;               // Settings.Default.OffsetWidth
@@ -173,15 +173,15 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private void ApplyViewerColorsFromSettings()
         {
             // Profile stroke
-            try { _profileStroke = UiUtilities.HexBrush(Settings.Default.ProfileColor); }
-            catch { _profileStroke = Brushes.Lime; }
+            try { _profileStroke = GraphicsPalette.ProfileBrush; }
+            catch { _profileStroke = Brushes.Yellow; }
 
             // Offset stroke (chamfer circle)
-            try { _offsetStroke = UiUtilities.HexBrush(Settings.Default.OffsetColor); }
+            try { _offsetStroke = GraphicsPalette.OffsetBrush; }
             catch { _offsetStroke = Brushes.Orange; }
 
             // Graphic/info text
-            try { _graphicText = UiUtilities.HexBrush(Settings.Default.GraphicTextColor); }
+            try { _graphicText = GraphicsPalette.GraphicTextBrush; }
             catch { _graphicText = Brushes.Yellow; }
 
             // Widths

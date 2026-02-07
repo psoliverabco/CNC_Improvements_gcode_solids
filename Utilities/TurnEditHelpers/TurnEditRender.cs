@@ -985,7 +985,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             // remove old grid
             ClearGridOnly();
 
-            Brush gridBrush = BrushFromHex(Settings.Default.ClosingColor, Brushes.Gray);
+            Brush gridBrush = BrushFromHex(Settings.Default.GridColor, Brushes.Gray);
 
             // subtle grid
             double opacityMinor = 0.30;
@@ -995,9 +995,9 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             double zoom = Math.Max(1e-9, _scale.ScaleX);
             double invZoom = 1.0 / zoom;
 
-            // Treat ClosingWidth as "px at zoom=1"
-            double minorPx = Math.Max(0.5, Settings.Default.ClosingWidth * 0.50);
-            double majorPx = Math.Max(minorPx + 0.3, Settings.Default.ClosingWidth * 0.80);
+            // Treat GridWidth as "px at zoom=1"
+            double minorPx = Math.Max(0.5, Settings.Default.GridWidth * 0.50);
+            double majorPx = Math.Max(minorPx + 0.3, Settings.Default.GridWidth * 0.80);
 
             // Convert px -> canvas units so after ScaleTransform it stays px on screen
             double thkMinor = minorPx * invZoom;

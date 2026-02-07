@@ -157,7 +157,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private static readonly Brush SecondaryGrey = new SolidColorBrush(Color.FromRgb(150, 150, 150));
 
         // Text driven by Settings
-        private Brush _graphicText = Brushes.Yellow;
+        private Brush _graphicText = GraphicsPalette.GraphicTextBrush;
         private double _profileWidth = 1.5;
         private double _offsetWidth = 1.2;
 
@@ -374,7 +374,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
             public string HeaderText { get; set; }
             public double CanvasHeight { get; set; }
 
-            private Brush _headerForeground = Brushes.LightGray;
+
+
+            private Brush _headerForeground = GraphicsPalette.GraphicTextBrush;
             public Brush HeaderForeground
             {
                 get => _headerForeground;
@@ -411,7 +413,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         {
             // Graphic/info text colour
             Brush b;
-            try { b = UiUtilities.HexBrush(Settings.Default.GraphicTextColor); }
+            try { b = GraphicsPalette.GraphicTextBrush; }
             catch { b = Brushes.Yellow; }
 
             _graphicText = b;

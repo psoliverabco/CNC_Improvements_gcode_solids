@@ -15,7 +15,7 @@
 
         <TextBlock Grid.Row="0"
                    Text="Settings"
-                   Foreground="#DDD"
+                   
                    FontSize="18"
                    FontWeight="SemiBold"
                    Margin="0,0,0,5"/>
@@ -62,33 +62,33 @@
                             </Grid.RowDefinitions>
 
                             <!-- ProfileColor -->
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Profile" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Foreground="#DDD" Grid.Column="0" Text="Profile"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtProfileColor" Grid.Row="0" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="0" Grid.Column="2" Content="Pick..." Tag="TxtProfileColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectProfileColor" Grid.Row="0" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
                             <!-- OffsetColor -->
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Offset" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Foreground="#DDD" Grid.Column="0" Text="Offset"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtOffsetColor" Grid.Row="1" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="1" Grid.Column="2" Content="Pick..." Tag="TxtOffsetColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectOffsetColor" Grid.Row="1" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
                             <!-- ClosingColor -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Closing" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Foreground="#DDD" Grid.Column="0" Text="Closing"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtClosingColor" Grid.Row="2" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="2" Grid.Column="2" Content="Pick..." Tag="TxtClosingColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectClosingColor" Grid.Row="2" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
                             <!-- CLColor -->
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="CL" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Foreground="#DDD" Grid.Column="0" Text="CL"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtCLColor" Grid.Row="4" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
-                            <Button Grid.Row="4" Grid.Column="2" Content="Pick..." Tag="TxtCLColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Button Grid.Row="3" Grid.Column="2" Content="Pick..." Tag="TxtCLColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectCLColor" Grid.Row="4" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
                             <!-- GraphicTextColor -->
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="GraphText" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Foreground="#DDD" Grid.Column="0" Text="GraphText"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtGraphicTextColor" Grid.Row="3" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
-                            <Button Grid.Row="3" Grid.Column="2" Content="Pick..." Tag="TxtGraphicTextColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Button Grid.Row="4" Grid.Column="2" Content="Pick..." Tag="TxtGraphicTextColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectGraphicTextColor" Grid.Row="3" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
                         </Grid>
                     </StackPanel>
@@ -111,16 +111,16 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="ProfileWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Foreground="#DDD" Grid.Column="0" Text="ProfileWidth"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtProfileWidth" Grid.Row="0" Grid.Column="1" Margin="8,3,0,3"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="OffsetWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Foreground="#DDD" Grid.Column="0" Text="OffsetWidth"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtOffsetWidth" Grid.Row="1" Grid.Column="1" Margin="8,3,0,3"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ClosingWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Foreground="#DDD" Grid.Column="0" Text="ClosingWidth"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtClosingWidth" Grid.Row="2" Grid.Column="1" Margin="8,3,0,3"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="CLWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Foreground="#DDD" Grid.Column="0" Text="CLWidth"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtCLWidth" Grid.Row="3" Grid.Column="1" Margin="8,3,0,3"/>
 
 
@@ -147,25 +147,25 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="TangentAngTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Foreground="#DDD" Grid.Column="0" Text="TangentAngTol"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtTangentAngTol" Grid.Row="0" Grid.Column="1" Margin="8,3,0,3"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="SmallSegment" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Foreground="#DDD" Grid.Column="0" Text="SmallSegment"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtSmallSegment" Grid.Row="1" Grid.Column="1" Margin="8,3,0,3"/>
 
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ClipperPolyTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Foreground="#DDD" Grid.Column="0" Text="ClipperPolyTol"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtClipperPolyTol" Grid.Row="2" Grid.Column="1" Margin="8,3,0,3"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="MinArcPoints" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Foreground="#DDD" Grid.Column="0" Text="MinArcPoints"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtMinArcPoints" Grid.Row="3" Grid.Column="1" Margin="8,3,0,3"/>
 
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="SnapTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Foreground="#DDD" Grid.Column="0" Text="SnapTol"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtSnapTol" Grid.Row="4" Grid.Column="1" Margin="8,3,0,3"/>
 
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="SewTol" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="5" Foreground="#DDD" Grid.Column="0" Text="SewTol"  VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtSewTol" Grid.Row="5" Grid.Column="1" Margin="8,3,0,3"/>
 
 
@@ -177,11 +177,11 @@
                 <!-- MISC -->
                 <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10">
                     <StackPanel>
-                        <TextBlock Text="Misc" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <TextBlock Text="Misc"  Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
 
                         <CheckBox x:Name="ChkLogWindowShow"
                                   Content="LogWindowShow"
-                                  Foreground="#DDD"
+                                   Foreground="#DDD"
                                   Margin="0,2,0,2"/>
                     </StackPanel>
                 </Border>

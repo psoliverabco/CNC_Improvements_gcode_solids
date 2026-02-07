@@ -2013,7 +2013,8 @@ namespace CNC_Improvements_gcode_solids
             {
                 reason = "";
 
-                int sleepMs = 120;
+                // Faster polling + faster stability check
+                int sleepMs = 60;
                 int attempts = Math.Max(1, timeoutMs / sleepMs);
 
                 for (int attempt = 0; attempt < attempts; attempt++)
@@ -2023,8 +2024,8 @@ namespace CNC_Improvements_gcode_solids
                         var fi = new System.IO.FileInfo(path);
                         if (fi.Exists && fi.Length > 0)
                         {
-                            // Ensure settled (avoid half-written)
-                            if (IsStableOnDisk(path, stableChecks: 3, stableSleepMs: 200))
+                            // ensure settled (avoid half-written) - faster
+                            if (IsStableOnDisk(path, stableChecks: 2, stableSleepMs: 80))
                                 return true;
                         }
                     }
@@ -2036,6 +2037,9 @@ namespace CNC_Improvements_gcode_solids
                 reason = "Timed out waiting for file to exist and become stable.";
                 return false;
             }
+
+
+            
 
             static string SafeReadAllText(string path)
             {
@@ -2371,7 +2375,7 @@ namespace CNC_Improvements_gcode_solids
                     if (string.Equals(p, mergedOutStep, StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.Equals(p, fusedOutStep, StringComparison.OrdinalIgnoreCase)) continue;
 
-                    if (WaitForFileArriveAndStable(p, timeoutMs: 60000, out string why))
+                    if (WaitForFileArriveAndStable(p, timeoutMs: 10000, out string why))
                     {
                         verifiedMergeInputs.Add(p);
                     }
@@ -2416,7 +2420,7 @@ namespace CNC_Improvements_gcode_solids
                     _ = CNC_Improvements_gcode_solids.FreeCadIntegration.FreeCadRunnerExportAllRunner.RunFreeCad(scriptPath, exportDir);
 
                     // Wait for LOG (exists regardless of success/fail)
-                    if (WaitForFileArriveAndStable(mergedOutLog, timeoutMs: 60000, out string whyLog))
+                    if (WaitForFileArriveAndStable(mergedOutLog, timeoutMs: 10000, out string whyLog))
                     {
                         allLogText = SafeReadAllText(mergedOutLog);
 
@@ -2466,7 +2470,7 @@ namespace CNC_Improvements_gcode_solids
                 string scriptPath = CNC_Improvements_gcode_solids.FreeCadIntegration.FreeCadRunnerFuse.SaveScript();
                 _ = CNC_Improvements_gcode_solids.FreeCadIntegration.FreeCadRunnerFuse.RunFreeCad(scriptPath, exportDir);
 
-                if (WaitForFileArriveAndStable(fusedOutLog, timeoutMs: 60000, out string whyLog))
+                if (WaitForFileArriveAndStable(fusedOutLog, timeoutMs: 10000, out string whyLog))
                 {
                     fuseLogText = SafeReadAllText(fusedOutLog);
 
@@ -2561,18 +2565,18 @@ namespace CNC_Improvements_gcode_solids
         {
             if (sets == null)
             {
-                sb.AppendLine("  (none)");
-                sb.AppendLine();
+                sb.AppendLine();   // keep spacing in the planned display
                 return "";
             }
 
             int shown = 0;
+            var py = new StringBuilder();
 
             foreach (var set in sets)
             {
                 if (set == null) continue;
 
-                // NEW: only include sets that are enabled for export
+                // only include sets enabled for export
                 if (!set.ExportEnabled)
                     continue;
 
@@ -2581,18 +2585,23 @@ namespace CNC_Improvements_gcode_solids
 
                 string stepName = $"{safe}{stepSuffix}";
 
-                // This is intentionally the python-style r"dir\file", line format you already used
+                // display (planned)
                 sb.AppendLine($"r\"{exportDir}\\{stepName}\",");
+
+                // python list item (same format)
+                py.AppendLine($"r\"{exportDir}\\{stepName}\",");
 
                 shown++;
             }
 
-            if (shown == 0)
-                sb.AppendLine("  (none)");
-
+            // IMPORTANT:
+            // - DO NOT emit "(none)" into the python list (that breaks the FreeCAD script).
+            // - For display, leaving it blank is fine; your UI already has per-section labels.
             sb.AppendLine();
-            return sb.ToString();
+
+            return py.ToString();
         }
+
 
 
 

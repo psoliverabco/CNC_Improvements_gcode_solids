@@ -2092,6 +2092,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 var sbScript = new System.Text.StringBuilder();
 
                 string profWidth = Settings.Default.ProfileWidth.ToString("0.###", CultureInfo.InvariantCulture);
+                string offWidth = Settings.Default.OffsetWidth.ToString("0.###", CultureInfo.InvariantCulture);
                 string closeWidth = Settings.Default.ClosingWidth.ToString("0.###", CultureInfo.InvariantCulture);
 
                 sbScript.AppendLine($"({Settings.Default.ProfileColor},{profWidth})");
@@ -2104,7 +2105,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
                 if (offsetProfileShape.Count > 0)
                 {
-                    sbScript.AppendLine($"({Settings.Default.OffsetColor},{profWidth})");
+                    sbScript.AppendLine($"({Settings.Default.OffsetColor},{offWidth})");
                     foreach (var line in offsetProfileShape)
                         sbScript.AppendLine(line);
 
@@ -2256,10 +2257,11 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
             invalidRegions = new List<string>();
 
             string profWidth = Settings.Default.ProfileWidth.ToString("0.###", CultureInfo.InvariantCulture);
+            string offWidth = Settings.Default.OffsetWidth.ToString("0.###", CultureInfo.InvariantCulture);
             string closeWidth = Settings.Default.ClosingWidth.ToString("0.###", CultureInfo.InvariantCulture);
 
             string styleProfile = $"({Settings.Default.ProfileColor},{profWidth})";
-            string styleOffset = $"({Settings.Default.OffsetColor},{profWidth})";
+            string styleOffset = $"({Settings.Default.OffsetColor},{offWidth})";
             string styleClosing = $"({Settings.Default.ClosingColor},{closeWidth})";
 
             var sb = new System.Text.StringBuilder();

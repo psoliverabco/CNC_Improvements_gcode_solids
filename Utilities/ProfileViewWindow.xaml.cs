@@ -32,7 +32,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private sealed class StyledSegment
         {
             public List<Point> Points { get; } = new List<Point>();
-            public Brush Stroke { get; set; } = Brushes.Lime;
+            public Brush Stroke { get; set; } = GraphicsPalette.ProfileBrush;
             public double Thickness { get; set; } = 1.5;
         }
 
@@ -65,35 +65,15 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
         private void ApplyLegendColors()
         {
-            try
-            {
-                // These Settings values are "#AARRGGBB" strings
-                Original.Fill = UiUtilities.HexBrush(Settings.Default.ProfileColor);
-            }
+            // Legend fills reflect the user palette
+            try { Original.Fill = GraphicsPalette.ProfileBrush; }
             catch { Original.Fill = Brushes.Transparent; }
 
-            try
-            {
-                Offset.Fill = UiUtilities.HexBrush(Settings.Default.OffsetColor);
-            }
+            try { Offset.Fill = GraphicsPalette.OffsetBrush; }
             catch { Offset.Fill = Brushes.Transparent; }
 
-            try
-            {
-                Closing.Fill = UiUtilities.HexBrush(Settings.Default.ClosingColor);
-            }
+            try { Closing.Fill = GraphicsPalette.ClosingBrush; }
             catch { Closing.Fill = Brushes.Transparent; }
-
-            //text colors
-
-            try
-            {
-                Closing.Fill = UiUtilities.HexBrush(Settings.Default.ClosingColor);
-            }
-            catch { Closing.Fill = Brushes.Transparent; }
-
-
-
 
             // Optional: keep the legend visible on dark background
             Original.Stroke = Brushes.Black;
@@ -171,8 +151,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         {
             try
             {
-                // Settings.Default.GraphicTextColor is "#FF123456" style
-                var brush = UiUtilities.HexBrush(Settings.Default.GraphicTextColor);
+                var brush = GraphicsPalette.GraphicTextBrush;
                 InfoText.Foreground = brush;
 
                 TxtSummary.Foreground = brush;
@@ -188,14 +167,14 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
             catch
             {
-                // Safe fallback if the setting is empty/invalid
-                InfoText.Foreground = Brushes.Yellow;
+                // Safe fallback
+                InfoText.Foreground = GraphicsPalette.GraphicTextBrush;
 
-                TxtSummary.Foreground = Brushes.Yellow;
-                t111.Foreground = Brushes.Yellow;
-                t222.Foreground = Brushes.Yellow;
-                t333.Foreground = Brushes.Yellow;
-                Desc.Foreground = Brushes.Yellow;
+                TxtSummary.Foreground = GraphicsPalette.GraphicTextBrush;
+                t111.Foreground = GraphicsPalette.GraphicTextBrush;
+                t222.Foreground = GraphicsPalette.GraphicTextBrush;
+                t333.Foreground = GraphicsPalette.GraphicTextBrush;
+                Desc.Foreground = GraphicsPalette.GraphicTextBrush;
 
             }
         }

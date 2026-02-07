@@ -26,7 +26,7 @@
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="TxtSummary"
-                           Foreground="#DDD"
+                           
                            FontFamily="Consolas"
                            FontSize="12"
                            VerticalAlignment="Center"

@@ -272,22 +272,22 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private static readonly Brush FillSelected = new SolidColorBrush(Color.FromArgb(110, 255, 165, 0));
 
         private Brush _strokeNormal = new SolidColorBrush(Color.FromArgb(220, 0, 255, 0));
-        private static readonly Brush StrokeSelected = Brushes.Orange;
+        private static readonly Brush StrokeSelected = DebugPalette.StrokeSelected;
 
         private static readonly Brush DetailGrey = new SolidColorBrush(Color.FromRgb(190, 190, 190));
 
         // Used for TextBlocks drawn into the CANVAS (labels/origin)
-        private Brush _graphicText = Brushes.Yellow;
+        private Brush _graphicText = GraphicsPalette.GraphicTextBrush;
 
         // Settings-driven stroke widths
         private double _profileWidth = Settings.Default.ProfileWidth;
 
         // NEW: CL overlay style (settings-driven)
-        private Brush _clStroke = Brushes.Magenta;
+        private Brush _clStroke = GraphicsPalette.CLBrush;
         private double _clWidth = 2.0;
 
         // NEW: Closing fill (settings-driven)
-        private Brush _closingFill = Brushes.Gray;
+        private Brush _closingFill = GraphicsPalette.ClosingBrush;
 
         // NEW: CL toggle state (GuidedTool only; ClosedWire forces CL on)
         private bool _showCL = false;
@@ -373,24 +373,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 _profileWidth = 1.2;
 
             // GraphicTextColor drives InfoText + canvas labels
-            try
-            {
-                _graphicText = UiUtilities.HexBrush(Settings.Default.GraphicTextColor);
-            }
-            catch
-            {
-                _graphicText = Brushes.Yellow;
-            }
+            try { _graphicText = GraphicsPalette.GraphicTextBrush; }
+            catch { _graphicText = Brushes.Yellow; }
 
-            // NEW: CL stroke + width
-            try
-            {
-                _clStroke = UiUtilities.HexBrush(Settings.Default.CLColor);
-            }
-            catch
-            {
-                _clStroke = Brushes.Magenta;
-            }
+            // CL stroke + width
+            try { _clStroke = GraphicsPalette.CLBrush; }
+            catch { _clStroke = Brushes.Magenta; }
 
             try
             {
@@ -404,18 +392,17 @@ namespace CNC_Improvements_gcode_solids.Utilities
             if (!double.IsFinite(_clWidth) || _clWidth <= 0.0)
                 _clWidth = 2.0;
 
-            // NEW: Closing fill color
-            try
-            {
-                _closingFill = UiUtilities.HexBrush(Settings.Default.ClosingColor);
-            }
-            catch
-            {
-                _closingFill = Brushes.Gray;
-            }
+            // Closing fill colour
+            try { _closingFill = GraphicsPalette.ClosingBrush; }
+            catch { _closingFill = Brushes.Gray; }
 
             if (InfoText != null)
                 InfoText.Foreground = _graphicText;
+
+            
+
+
+
         }
 
 
@@ -1904,10 +1891,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // Requested colors:
             //   OUTER  = stroke YELLOW, fill YELLOW
             //   ISLAND = stroke YELLOW, fill BLACK
-            Brush strokeOutside = Brushes.BlueViolet; ;
-            Brush strokeIsland = Brushes.BlueViolet;
-            Brush fillOutside = Brushes.WhiteSmoke;
-            Brush fillIslandInside = Brushes.Black;
+            Brush strokeOutside = DebugPalette.ClipperStrokeOutside;
+            Brush strokeIsland = DebugPalette.ClipperStrokeIsland;
+            Brush fillOutside = DebugPalette.ClipperFillOutside;
+            Brush fillIslandInside = DebugPalette.ClipperFillIslandInside;
 
 
 
@@ -1944,8 +1931,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var info = new TextBlock
             {
                 Text = $"Clipper union: subj={subjCount}  loops={resultCount}  totalVerts={totalVerts}  chordTol={CLIPPER_CHORD_TOL}",
-                Foreground = Brushes.Yellow,
-                FontFamily = new FontFamily("Consolas"),
+                Foreground = _graphicText,
                 FontSize = 12
             };
             Canvas.SetLeft(info, 10);
@@ -2477,7 +2463,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                 Brush stroke = (colorCount > 1)
                     ? MillPage.ColorList[i % colorCount]
-                    : Brushes.Lime;
+                    : DebugPalette.ClipperGood;
 
                 var pl = new Polyline
                 {
@@ -2504,7 +2490,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var info = new TextBlock
             {
                 Text = $"PRE-CLIPPER polys: {subj.Count}   totalPts={totalPts}   chordTol={CLIPPER_CHORD_TOL}",
-                Foreground = Brushes.Yellow,
+                Foreground = _graphicText,
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 12
             };
@@ -2573,7 +2559,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                 Brush stroke = (colorCount > 1)
                     ? MillPage.ColorList[i % colorCount]
-                    : Brushes.Lime;
+                    : DebugPalette.ClipperGood;
 
                 double thk = Math.Max(0.5, _profileWidth);
 
@@ -2634,7 +2620,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var info = new TextBlock
             {
                 Text = $"CANDIDATES: segs={_segs.Count}  primitives={primitives}  chordTol={CLIPPER_CHORD_TOL}",
-                Foreground = Brushes.Yellow,
+                Foreground = _graphicText,
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 12
             };
@@ -4239,11 +4225,11 @@ namespace CNC_Improvements_gcode_solids.Utilities
             ApplyViewerStylesFromSettings();
 
             // Requested display colors
-            Brush outerStroke = Brushes.White;
-            Brush outerFill = Brushes.SlateGray;
+            Brush outerStroke = DebugPalette.WireOuterStroke;
+            Brush outerFill = DebugPalette.WireOuterFill;
 
-            Brush islandStroke = Brushes.White;
-            Brush islandFill = Brushes.Black;
+            Brush islandStroke = DebugPalette.WireIslandStroke;
+            Brush islandFill = DebugPalette.WireIslandFill;
 
             double thk = Math.Max(1.0, _profileWidth + 0.5);
 
@@ -4341,7 +4327,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var info = new TextBlock
             {
                 Text = $"PY-PRIMS DISPLAY: outerLoops={outerLoops?.Count ?? 0}  islandLoops={islandLoops?.Count ?? 0}  MIN_ARC_POINTS={MIN_ARC_POINTS}  SNAP_TOL={SNAP_TOL}",
-                Foreground = Brushes.Yellow,
+                Foreground = _graphicText,
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 12
             };

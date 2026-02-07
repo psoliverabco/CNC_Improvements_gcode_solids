@@ -23,7 +23,7 @@
                 Margin="0,0,0,8">
             <DockPanel LastChildFill="True">
                 <TextBlock x:Name="TxtSummary"
-                           Foreground="#DDD"
+                           
                            FontFamily="Consolas"
                            FontSize="12"
                            VerticalAlignment="Center"

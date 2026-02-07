@@ -155,7 +155,7 @@
                              Height="260"
                              SelectionMode="Extended"
                              Background="#0D0D0D"
-                             Foreground="#DDD"
+                              Foreground="#DDD"
                              BorderBrush="#444"
                              BorderThickness="1"
                              FontFamily="Consolas"

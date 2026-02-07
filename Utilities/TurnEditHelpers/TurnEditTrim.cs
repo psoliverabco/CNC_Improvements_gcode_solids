@@ -115,12 +115,12 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
         /// - replacementLine: region-input LINE/ARC3_CW describing the updated A segment
         /// </summary>
         public static bool Run(
-            Pick aPick,
-            Pick bPick,
-            IHost host,
-            out int replaceIndex,
-            out string? replacementLine,
-            out string statusText)
+    Pick aPick,
+    Pick bPick,
+    IHost host,
+    out int replaceIndex,
+    out string? replacementLine,
+    out string statusText)
         {
             replaceIndex = -1;
             replacementLine = null;
@@ -142,12 +142,22 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             // A is the segment we replace
             int replaceIdxLocal = aPick.SegIndex;
 
-            // Build + filter IP candidates (infinite primitives)
+            // Build IP candidates (infinite primitives). If there is no true intersection,
+            // we replace the TARGET (B) with a deterministic helper LINE and intersect against that.
+            // This makes trim deterministic even when geometry is separated by any distance.
             List<Point> ips = BuildIntersectionCandidates_Infinite(aPick.Seg, bPick.Seg);
             if (ips.Count == 0)
             {
-                statusText = "Trim: no intersections found.";
-                return false;
+                if (TryBuildHelperTargetLine(aPick.Seg, bPick.Seg, out SegView helperLine, out _))
+                {
+                    ips = BuildIntersectionCandidates_Infinite(aPick.Seg, helperLine);
+                }
+
+                if (ips.Count == 0)
+                {
+                    statusText = "Trim: no intersections found.";
+                    return false;
+                }
             }
 
             // Enumerate trim outcomes (cycle these, not raw IPs)
@@ -174,6 +184,169 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             statusText = "Trim: replacement segment returned (applied by caller).";
             return true;
         }
+
+        private static bool TryBuildHelperTargetLine(SegView a, SegView b, out SegView helperLine, out string why)
+        {
+            helperLine = new SegView();
+            why = "";
+
+            // LINE–ARC (either ordering)
+            if ((a.Kind == SegKind.Line && b.Kind == SegKind.Arc) || (a.Kind == SegKind.Arc && b.Kind == SegKind.Line))
+            {
+                SegView line = (a.Kind == SegKind.Line) ? a : b;
+                SegView arc = (a.Kind == SegKind.Arc) ? a : b;
+
+                Vector v = line.B - line.A;
+                double vv = v.X * v.X + v.Y * v.Y;
+                if (!TurnEditMath.IsFinite(vv) || vv < 1e-18)
+                    return false;
+
+                // Normal to line
+                Vector n = new Vector(-v.Y, v.X);
+                double nn = Math.Sqrt(n.X * n.X + n.Y * n.Y);
+                if (!TurnEditMath.IsFinite(nn) || nn < 1e-18)
+                    return false;
+
+                n /= nn;
+
+                // Any 2 distinct points define an infinite line for intersection generation.
+                // Use unit-length offsets about the arc center.
+                Point c = arc.C;
+                Point p0 = new Point(c.X - n.X, c.Y - n.Y);
+                Point p1 = new Point(c.X + n.X, c.Y + n.Y);
+
+                helperLine = new SegView
+                {
+                    Kind = SegKind.Line,
+                    A = p0,
+                    B = p1
+                };
+
+                why = "LINE–ARC miss: helper = (arc center) + normal-to-line";
+                return true;
+            }
+
+            // ARC–ARC
+            if (a.Kind == SegKind.Arc && b.Kind == SegKind.Arc)
+            {
+                Point c1 = a.C;
+                Point c2 = b.C;
+                double d = TurnEditMath.Dist(c1, c2);
+                if (!TurnEditMath.IsFinite(d) || d < 1e-18)
+                    return false;
+
+                helperLine = new SegView
+                {
+                    Kind = SegKind.Line,
+                    A = c1,
+                    B = c2
+                };
+
+                why = "ARC–ARC miss: helper = line between centers";
+                return true;
+            }
+
+            return false;
+        }
+
+
+        private static bool TryBuildSnapCandidate(Pick aPick, Pick bPick, double tol, out Point snapWorld)
+        {
+            snapWorld = new Point(double.NaN, double.NaN);
+
+            if (aPick == null || bPick == null || aPick.Seg == null || bPick.Seg == null)
+                return false;
+
+            // Only snap based on the endpoint the user actually picked on A
+            Point movingEnd = aPick.PickStart ? aPick.Seg.A : aPick.Seg.B;
+
+            // Snap moving endpoint to closest point on B (finite line segment or full circle)
+            if (bPick.Seg.Kind == SegKind.Line)
+            {
+                Point q = ClosestPointOnSegment(movingEnd, bPick.Seg.A, bPick.Seg.B);
+                if (TurnEditMath.Dist(movingEnd, q) <= tol)
+                {
+                    snapWorld = q;
+                    return true;
+                }
+                return false;
+            }
+
+            if (bPick.Seg.Kind == SegKind.Arc)
+            {
+                // Treat arc as full circle (consistent with your current candidate rules)
+                Point C = bPick.Seg.C;
+                double r = bPick.Seg.Radius;
+                if (!TurnEditMath.IsFinite(r) || r <= 1e-12)
+                    return false;
+
+                Point q = ClosestPointOnCircle(movingEnd, C, r);
+
+                // radial distance from point to circle surface
+                double dr = Math.Abs(TurnEditMath.Dist(movingEnd, C) - r);
+                if (dr <= tol)
+                {
+                    snapWorld = q;
+                    return true;
+                }
+                return false;
+            }
+
+            return false;
+        }
+
+        private static Point ClosestPointOnSegment(Point p, Point a, Point b)
+        {
+            double vx = b.X - a.X;
+            double vy = b.Y - a.Y;
+            double wx = p.X - a.X;
+            double wy = p.Y - a.Y;
+
+            double vv = vx * vx + vy * vy;
+            if (vv <= 1e-24)
+                return a;
+
+            double t = (wx * vx + wy * vy) / vv;
+            if (t < 0.0) t = 0.0;
+            if (t > 1.0) t = 1.0;
+
+            return new Point(a.X + vx * t, a.Y + vy * t);
+        }
+
+        private static Point ClosestPointOnCircle(Point p, Point c, double r)
+        {
+            double dx = p.X - c.X;
+            double dy = p.Y - c.Y;
+            double d = Math.Sqrt(dx * dx + dy * dy);
+
+            if (!TurnEditMath.IsFinite(d) || d <= 1e-24)
+            {
+                // arbitrary direction if point is at center
+                return new Point(c.X + r, c.Y);
+            }
+
+            double inv = r / d;
+            return new Point(c.X + dx * inv, c.Y + dy * inv);
+        }
+
+        private static double PointLineDistance(Point p, Point a, Point b)
+        {
+            double vx = b.X - a.X;
+            double vy = b.Y - a.Y;
+
+            double wx = p.X - a.X;
+            double wy = p.Y - a.Y;
+
+            double vv = vx * vx + vy * vy;
+            if (vv <= 1e-24)
+                return TurnEditMath.Dist(p, a);
+
+            // area magnitude / base length
+            double cross = Math.Abs(vx * wy - vy * wx);
+            double len = Math.Sqrt(vv);
+            return cross / len;
+        }
+
 
         // ============================================================
         // Option enumeration
@@ -207,10 +380,13 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             Point A = seg.A;
             Point B = seg.B;
 
-            double tol = EditTol;
-            double colTol = tol;
-            double betweenTol = tol / 100.0; // allow interior classification without endpoint flapping
-            if (betweenTol < 1e-12) betweenTol = 1e-12;
+            double sew = CNC_Improvements_gcode_solids.Properties.Settings.Default.SewTol;
+            if (!TurnEditMath.IsFinite(sew) || sew <= 0.0) sew = 0.001;
+            double editTol = Math.Max(1e-12, sew * 0.5);
+
+            // Use ONE tolerance everywhere (no mixed eps)
+            double colTol = editTol;
+            double betweenTol = Math.Max(1e-12, editTol * 0.01);
 
             for (int i = 0; i < ips.Count; i++)
             {
@@ -236,16 +412,46 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     continue;
                 }
 
+                // NEW: if IP is NOT collinear with the original line, allow a SNAP outcome.
+                // This is what handles "near miss" (e.g. line 0.0005 away from arc): we move the picked end
+                // directly to the closest point on the target (within EditTol), even though it's not on the ray.
+                bool ipIsCollinear = (PointLineDistance(ip, A, B) <= colTol);
+                if (!ipIsCollinear)
+                {
+                    bool moveStart = aPick.PickStart;
+                    Point p0 = moveStart ? ip : A;
+                    Point p1 = moveStart ? B : ip;
+
+                    outOpts.Add(MakeLineOption(
+                        label: $"LINE SNAP (≤EditTol) @IP{i + 1}: move {(moveStart ? "Start" : "End")}",
+                        ip: ip,
+                        p0: p0,
+                        p1: p1));
+
+                    // Also offer the opposite end snap (only if it makes sense)
+                    bool moveStartOpp = !moveStart;
+                    Point p0o = moveStartOpp ? ip : A;
+                    Point p1o = moveStartOpp ? B : ip;
+
+                    outOpts.Add(MakeLineOption(
+                        label: $"LINE SNAP (≤EditTol) @IP{i + 1}: move {(moveStartOpp ? "Start" : "End")}",
+                        ip: ip,
+                        p0: p0o,
+                        p1: p1o));
+
+                    continue;
+                }
+
                 // Extend/trim: prefer picked end, but also include the swapped end if it is "in front"
                 bool pickedMoveStart = aPick.PickStart;
 
-                // Outcome 1: move picked end
+                // Outcome 1: move picked end (ray test uses EditTol, not 1e-9)
                 {
                     bool moveStart = pickedMoveStart;
                     Point fixedEnd = moveStart ? B : A;
                     Point movingEnd = moveStart ? A : B;
 
-                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, tol))
+                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, editTol))
                     {
                         Point p0 = moveStart ? ip : A;
                         Point p1 = moveStart ? B : ip;
@@ -264,7 +470,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     Point fixedEnd = moveStart ? B : A;
                     Point movingEnd = moveStart ? A : B;
 
-                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, tol))
+                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, editTol))
                     {
                         Point p0 = moveStart ? ip : A;
                         Point p1 = moveStart ? B : ip;
@@ -278,12 +484,14 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 }
             }
 
-            // de-dup identical outcomes (can happen if IP equals endpoint, etc.)
-            outOpts = DedupOptions(outOpts, tol);
+            // de-dup identical outcomes
+            outOpts = DedupOptions(outOpts, editTol);
+
             var copy = outOpts.ToList();
             outOpts.Clear();
             outOpts.AddRange(copy);
         }
+
 
 
         private static TrimOption MakeLineOption(string label, Point ip, Point p0, Point p1)
@@ -528,7 +736,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
 
             var txt = new TextBlock
             {
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
@@ -537,7 +745,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
 
             var txtDetail = new TextBlock
             {
-                Foreground = Brushes.LightGray,
+                Foreground = UiUtilities.HexBrush(Settings.Default.GraphicTextColor),
                 FontFamily = new FontFamily("Consolas"),
                 Margin = new Thickness(0, 0, 0, 10)
             };

@@ -66,10 +66,11 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             string KEY_NRad)
         {
             string profWidth = Settings.Default.ProfileWidth.ToString("0.###", CultureInfo.InvariantCulture);
+            string offWidth = Settings.Default.OffsetWidth.ToString("0.###", CultureInfo.InvariantCulture);
             string closeWidth = Settings.Default.ClosingWidth.ToString("0.###", CultureInfo.InvariantCulture);
 
             string styleProfile = $"({Settings.Default.ProfileColor},{profWidth})";
-            string styleOffset = $"({Settings.Default.OffsetColor},{profWidth})";
+            string styleOffset = $"({Settings.Default.OffsetColor},{offWidth})";
             string styleClosing = $"({Settings.Default.ClosingColor},{closeWidth})";
 
             var sb = new StringBuilder();

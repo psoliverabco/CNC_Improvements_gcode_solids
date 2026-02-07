@@ -6,7 +6,7 @@
       <Value Profile="(Default)">C:\Program Files\FreeCAD 0.21\bin\FreeCADCMD.exe</Value>
     </Setting>
     <Setting Name="ProfileColor" Type="System.String" Scope="User">
-      <Value Profile="(Default)">#FF00FF00</Value>
+      <Value Profile="(Default)">#FFFFFF00</Value>
     </Setting>
     <Setting Name="ProfileWidth" Type="System.Double" Scope="User">
       <Value Profile="(Default)">1</Value>
@@ -24,7 +24,13 @@
       <Value Profile="(Default)">1</Value>
     </Setting>
     <Setting Name="GraphicTextColor" Type="System.String" Scope="User">
-      <Value Profile="(Default)">#FFFBFF3D</Value>
+      <Value Profile="(Default)">#FFFB1111</Value>
+    </Setting>
+    <Setting Name="GridColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FF404040</Value>
+    </Setting>
+    <Setting Name="GridWidth" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">1</Value>
     </Setting>
     <Setting Name="TangentAngTol" Type="System.Single" Scope="User">
       <Value Profile="(Default)">0.122</Value>

@@ -665,56 +665,52 @@ finally:
 
         public static string BuildScriptText()
         {
-
-
             if (string.IsNullOrWhiteSpace(ProjectName))
                 throw new InvalidOperationException("FreeCadScriptExportAll.ProjectName is not set.");
 
             if (string.IsNullOrWhiteSpace(OutStepPath))
                 throw new InvalidOperationException("FreeCadScriptExportAll.OutStepPath is not set.");
 
-            if (string.IsNullOrWhiteSpace(FuseTurnFiles))
+            // TURN is mandatory (base body). MILL + DRILL may be empty.
+            if (FuseTurnFiles == null)
                 throw new InvalidOperationException("FreeCadScriptExportAll.FuseFiles is not set.");
 
-            if (string.IsNullOrWhiteSpace(FuseMillFiles))
+            if (FuseMillFiles == null)
                 throw new InvalidOperationException("FreeCadScriptExportAll.FuseMillFiles is not set.");
 
-            if (string.IsNullOrWhiteSpace(FuseDrillFiles))
+            if (FuseDrillFiles == null)
                 throw new InvalidOperationException("FreeCadScriptExportAll.FuseDrillFiles is not set.");
 
-
-
-
+            // Also enforce TURN has at least one entry (otherwise FreeCAD script cannot proceed)
+            if (string.IsNullOrWhiteSpace(FuseTurnFiles))
+                throw new InvalidOperationException("FreeCadScriptExportAll.FuseFiles (TURN) is empty.");
 
             string pn = ProjectName.Replace("\"", "\\\"");
 
             var sb = new StringBuilder();
             sb.AppendLine(HeadPY.TrimEnd());
             sb.AppendLine();
-            // sb.AppendLine($"PROJECT_NAME = \"{pn}\"");
+
             sb.AppendLine($"OUT_STEP = r\"{OutStepPath}\"");
             sb.AppendLine();
+
             sb.AppendLine("Turn_steps = [");
-            sb.AppendLine(FuseTurnFiles);
+            sb.AppendLine(FuseTurnFiles);   // may contain 1+ python list items
             sb.AppendLine("]");
 
             sb.AppendLine("Mill_steps = [");
-            sb.AppendLine(FuseMillFiles);
+            sb.AppendLine(FuseMillFiles);   // can be empty
             sb.AppendLine("]");
 
             sb.AppendLine("Drill_steps = [");
-            sb.AppendLine(FuseDrillFiles);
+            sb.AppendLine(FuseDrillFiles);  // can be empty
             sb.AppendLine("]");
-
-
 
             sb.AppendLine(TailPY);
 
-
-
-
             return sb.ToString();
         }
+
 
 
 

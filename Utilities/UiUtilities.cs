@@ -158,97 +158,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
             TryInvokeClear(obj);
         }
 
-        private static void TryClearAnyRegionSetCollections(object mainWindow)
-        {
-            try
-            {
-                var t = mainWindow.GetType();
-                var props = t.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+       
 
-                foreach (var p in props)
-                {
-                    if (!p.CanRead) continue;
-
-                    object? v;
-                    try { v = p.GetValue(mainWindow); } catch { continue; }
-                    if (v == null) continue;
-
-                    // Must be a collection
-                    if (v is not IEnumerable) continue;
-
-                    // If it is IList we can clear directly
-                    if (v is IList il)
-                    {
-                        if (LooksLikeRegionSetList(il))
-                        {
-                            try { il.Clear(); } catch { }
-                        }
-                        continue;
-                    }
-
-                    // If it has Clear() and appears to hold RegionSet, clear it.
-                    if (LooksLikeRegionSetEnumerable(v))
-                    {
-                        TryInvokeClear(v);
-                    }
-                }
-            }
-            catch
-            {
-                // no crash on reset
-            }
-        }
-
-        private static bool LooksLikeRegionSetList(IList list)
-        {
-            // If empty, we decide based on generic type name (if available)
-            if (list.Count == 0)
-            {
-                var tn = list.GetType().FullName ?? "";
-                return tn.Contains("RegionSet", StringComparison.OrdinalIgnoreCase);
-            }
-
-            // If has items, check first item type
-            object? it = null;
-            try { it = list[0]; } catch { }
-            return it is RegionSet;
-        }
-
-        private static bool LooksLikeRegionSetEnumerable(object v)
-        {
-            // Check generic args if any
-            var t = v.GetType();
-            if (t.IsGenericType)
-            {
-                var args = t.GetGenericArguments();
-                if (args != null && args.Length == 1)
-                {
-                    if (typeof(RegionSet).IsAssignableFrom(args[0]))
-                        return true;
-
-                    // some wrappers: ObservableCollection<RegionSet> etc already caught here
-                    var n = args[0].FullName ?? "";
-                    if (n.Contains("RegionSet", StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-            }
-
-            // Fall back: if it has any RegionSet items (cheap first item check)
-            try
-            {
-                var en = (v as IEnumerable);
-                if (en == null) return false;
-
-                foreach (var item in en)
-                {
-                    if (item == null) continue;
-                    return item is RegionSet;
-                }
-            }
-            catch { }
-
-            return false;
-        }
+       
+        
 
         private static void TryInvokeClear(object obj)
         {
@@ -422,7 +335,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
             byte b = ParseHexByte(bStr);
 
             var color = Color.FromArgb(a, r, g, b);
-            return new SolidColorBrush(color);
+
+
+            
+                return new SolidColorBrush(color);
         }
 
         /// <summary>
