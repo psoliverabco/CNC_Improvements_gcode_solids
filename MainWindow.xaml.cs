@@ -1239,11 +1239,18 @@ namespace CNC_Improvements_gcode_solids
             s.PageSnapshot.Values["ClipperIsland"] = "1";
             s.PageSnapshot.Values["Clipper"] = "1";
 
+            // Wire interpretation defaults (new radios)
+            s.PageSnapshot.Values["GuidedTool"] = "1";
+            s.PageSnapshot.Values["ClosedWire"] = "0";
+            s.PageSnapshot.Values["ClosedInner"] = "0";
+            s.PageSnapshot.Values["ClosedOuter"] = "1";
+
             MillSets.Add(s);
             SelectedMillSet = s;
 
             OnPropertyChanged(nameof(SelectedSetLabel));
         }
+
 
 
 
@@ -2256,11 +2263,11 @@ namespace CNC_Improvements_gcode_solids
                 // -----------------------------
                 try
                 {
-                    if (TurnSets == null || TurnSets.Count == 0)
-                    {
-                        failures.Add("TURN: No turning sets.");
-                    }
-                    else
+                    // If NO turning sets are selected for export, do nothing (NOT a failure).
+                    bool anyTurnSelected =
+                        (TurnSets != null) && TurnSets.Any(s => s != null && s.ExportEnabled);
+
+                    if (anyTurnSelected)
                     {
                         for (int i = 0; i < TurnSets.Count; i++)
                         {
@@ -2295,11 +2302,49 @@ namespace CNC_Improvements_gcode_solids
                 {
                     failures.Add($"TURN: ExportAll error — {ex.Message}");
                 }
+
             }
             finally
             {
                 IsExportAllRunning = false;
             }
+
+            // If NO turning regions are selected for export:
+            // - export is "individual regions only"
+            // - skip ALL waiting, skip merge, skip fuse.
+            bool anyTurnSelectedForExport =
+                (TurnSets != null) && TurnSets.Any(s => s != null && s.ExportEnabled);
+            int cap = 14;
+            if (!anyTurnSelectedForExport)
+            {
+                if (failures.Count == 0)
+                {
+                    MessageBox.Show(
+                        "Export complete.\n\nTURN: (none selected)\nMerge/Fuse: skipped",
+                        "Export All",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                // show same failure summary, but still skip merge/fuse/wait
+               
+                var sb2 = new System.Text.StringBuilder();
+                sb2.AppendLine($"Export complete — {failures.Count} issue(s):");
+                sb2.AppendLine();
+
+                for (int i = 0; i < Math.Min(failures.Count, cap); i++)
+                    sb2.AppendLine(failures[i]);
+
+                if (failures.Count > cap)
+                    sb2.AppendLine($"\n(+{failures.Count - cap} more)");
+
+                MessageBox.Show(sb2.ToString(), "Export All", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+
+
 
             // ------------------------------------------------------------
             // 3) WAIT for region STEP files (simplified: we deleted first)
@@ -2486,7 +2531,7 @@ namespace CNC_Improvements_gcode_solids
             }
 
             // cap summary, but logs are available in LogWindow when enabled
-            int cap = 14;
+            
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Export all complete — {failures.Count} issue(s):");
             sb.AppendLine();
@@ -4570,6 +4615,40 @@ namespace CNC_Improvements_gcode_solids
             // MILL regions: (G106....) .. (G1206)
             var millRegions = CNC_Improvements_gcode_solids.Utilities.FaptMill.BuildFaptMillRegions(lines);
 
+
+
+            // If regions exist but NONE have an appended name after the header ')', show a clear message.
+            bool HasAppendedName(List<string> region)
+            {
+                if (region == null || region.Count == 0) return false;
+                string first = region[0] ?? "";
+                string nm = CNC_Improvements_gcode_solids.Utilities.FaptTurn.ExtractFaptRegionName(first);
+                return !string.IsNullOrWhiteSpace(nm);
+            }
+
+            int totalFound = (turnRegions?.Count ?? 0) + (millRegions?.Count ?? 0);
+            bool anyNamed =
+                (turnRegions != null && turnRegions.Any(r => HasAppendedName(r))) ||
+                (millRegions != null && millRegions.Any(r => HasAppendedName(r)));
+
+            if (totalFound > 0 && !anyNamed)
+            {
+                MessageBox.Show(
+                    "FAPT regions found, but no names were appended after the header ')'.\n\n" +
+                    "Example required format:\n" +
+                    "(G112........)RegionName\n" +
+                    "(G1062........)RegionName\n\n" +
+                    "Tip: the name must be AFTER the first ')' and BEFORE any '(u:....)' tag.",
+                    "FAPT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+                return;
+            }
+
+
+
+
             // Combine for selection dialog
             var regions = new List<List<string>>();
             var regionType = new List<string>(); // "TURN" or "MILL"
@@ -4633,19 +4712,19 @@ namespace CNC_Improvements_gcode_solids
                 if (rawGcode == null || rawGcode.Count == 0)
                     return;
 
-                // first Z-only-ish line for plane
+                // first line that contains Z anywhere (FAPT-MILL often emits "G0Z...")
                 for (int i = 0; i < rawGcode.Count; i++)
                 {
                     string u = (rawGcode[i] ?? "").Trim().ToUpperInvariant();
                     if (u.Length == 0) continue;
 
-                    // prefer a pure Z line like "Z-14" or starts with "Z"
-                    if (u.StartsWith("Z", StringComparison.Ordinal))
+                    if (u.Contains("Z"))
                     {
                         planeZIndex = i;
                         break;
                     }
                 }
+
 
                 // first X/Y occurrence for starts
                 for (int i = 0; i < rawGcode.Count; i++)
@@ -4776,7 +4855,8 @@ namespace CNC_Improvements_gcode_solids
                 {
                     // MILL translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptMill.TranslateFaptRegionToMillGcode(regions[idx]);
-                    string strippedBaseName ="";
+                    string strippedBaseName = "";
+                    int millAlphaCounter = 0;
                     // If the MILL FAPT header contains inline transform tokens, we must run ResolveTrans
                     // on the GENERATED MILL GCODE (rawGcode), NOT on the FAPT text and NOT by searching editor text.
                     bool hasTransformTokens =
@@ -4821,14 +4901,17 @@ namespace CNC_Improvements_gcode_solids
                     {
                         // No transforms: single path is just the generated mill gcode
                         millPaths = new List<List<string>>
-        {
-            rawGcode ?? new List<string>()
-        };
+    {
+        rawGcode ?? new List<string>()
+    };
                     }
 
                     // Now store/append EACH returned path as its own MILL region:
                     // - if 1 path => use "name"
                     // - if multiple => use "name(1)", "name(2)", ...
+
+                    // NOTE: millAlphaCounter must be declared ONCE outside the per-region loop so it keeps running.
+                    // Here we just CONSUME it.
                     for (int pathIdx = 0; pathIdx < millPaths.Count; pathIdx++)
                     {
                         var pathRaw = millPaths[pathIdx] ?? new List<string>();
@@ -4837,22 +4920,28 @@ namespace CNC_Improvements_gcode_solids
 
                         string nameThis = name;
 
-
                         if (pathIdx > 0)
                         {
                             strippedBaseName = StripTransformTokens(name) + "(T" + pathIdx + ")";
                             if (string.IsNullOrWhiteSpace(strippedBaseName))
                                 strippedBaseName = name; // fallback
-                        } else { strippedBaseName = name; }
-
-
+                        }
+                        else
+                        {
+                            strippedBaseName = StripTransformTokens(name);
+                        }
 
                         if (millPaths.Count > 1)
                             nameThis = name + "(" + (pathIdx + 1).ToString(CultureInfo.InvariantCulture) + ")";
 
                         // Step 2: add unique endtag with NO spaces (m:<alpha><0000>)
+                        // alpha must keep indexing across ALL converted MILL paths (across regions + transform copies)
+                        alpha = (char)('A' + (millAlphaCounter % 26));
+                        millAlphaCounter++;
+
                         var taggedNoSpace = new List<string>();
                         int n = 0;
+
                         for (int i = 0; i < pathRaw.Count; i++)
                         {
                             string gl = (pathRaw[i] ?? "").TrimEnd();
@@ -4862,14 +4951,6 @@ namespace CNC_Improvements_gcode_solids
                             string tag = "(m:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
                             taggedNoSpace.Add(gl + tag); // NO space
                             n++;
-
-
-
-                           
-                            
-
-
-
                         }
 
                         sb.AppendLine("----- GENERATED MILL GCODE (FINAL PATH, tagged, no-space) -----");
@@ -4916,6 +4997,12 @@ namespace CNC_Improvements_gcode_solids
                                 removeSplitter: "0",
                                 clipper: "0",
                                 clipperIsland: "0",
+
+                                // FAPT MILL defaults: Closed CL Wire + Inner
+                                guidedTool: "0",
+                                closedWire: "1",
+                                closedInner: "1",
+                                closedOuter: "0",
                                 snapshotDefaults: null
                             );
 
@@ -4944,6 +5031,11 @@ namespace CNC_Improvements_gcode_solids
                                 removeSplitter: "0",
                                 clipper: "0",
                                 clipperIsland: "0",
+                                 // FAPT MILL defaults: Closed CL Wire + Inner
+                                guidedTool: "0",
+                                closedWire: "1",
+                                closedInner: "1",
+                                closedOuter: "0",
                                 snapshotDefaults: null
                             );
                         }
@@ -4984,13 +5076,16 @@ namespace CNC_Improvements_gcode_solids
             }
 
 
+            // Resync after programmatic edit (required for searches/markers/line indices)
+            SyncGcodeLinesFromEditor();
+            CNC_Improvements_gcode_solids.Utilities.UiUtilities.RebuildAndStoreNumberedLineStartIndex(TxtGcode);
 
 
         }
 
         // Strip any inline transform tokens from the region name.
         // Example: "GO2 #ROT,100,0,20,5#" => "GO2"
-       private string StripTransformTokens(string s)
+        private string StripTransformTokens(string s)
         {
             s = (s ?? "");
 

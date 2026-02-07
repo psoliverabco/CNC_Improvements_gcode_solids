@@ -34,6 +34,7 @@
                     <Button Content="Reset Zoom" Padding="10,3" Margin="6,0,0,0" Click="BtnReset_Click"/>
 
                     <Separator Width="10" Opacity="0"/>
+                    <Button x:Name="BtnToggleCL" Content="CL: OFF" Padding="10,3" Margin="6,0,0,0" Click="BtnToggleCL_Click"/>
 
                     <Button x:Name="BtnToggleLabels" Content="Labels: ON" Padding="10,3" Margin="6,0,0,0" Click="BtnToggleLabels_Click"/>
 

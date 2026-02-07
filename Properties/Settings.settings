@@ -44,5 +44,11 @@
     <Setting Name="SnapRad" Type="System.Double" Scope="User">
       <Value Profile="(Default)">0.1</Value>
     </Setting>
+    <Setting Name="CLColor" Type="System.String" Scope="User">
+      <Value Profile="(Default)">#FFFF00FF</Value>
+    </Setting>
+    <Setting Name="CLWidth" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">2</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

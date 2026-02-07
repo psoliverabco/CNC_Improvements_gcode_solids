@@ -22,6 +22,10 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
             string removeSplitter,
             string clipper,
             string clipperIsland,
+            string? guidedTool = null,
+            string? closedWire = null,
+            string? closedInner = null,
+            string? closedOuter = null,
             IReadOnlyDictionary<string, string>? snapshotDefaults = null)
         {
             regionLines ??= Array.Empty<string>();
@@ -64,6 +68,12 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
             rs.PageSnapshot.Values["Clipper"] = clipper ?? string.Empty;
             rs.PageSnapshot.Values["ClipperIsland"] = clipperIsland ?? string.Empty;
 
+            // Wire interpretation (optional)
+            if (guidedTool != null) rs.PageSnapshot.Values["GuidedTool"] = guidedTool;
+            if (closedWire != null) rs.PageSnapshot.Values["ClosedWire"] = closedWire;
+            if (closedInner != null) rs.PageSnapshot.Values["ClosedInner"] = closedInner;
+            if (closedOuter != null) rs.PageSnapshot.Values["ClosedOuter"] = closedOuter;
+
             return rs;
         }
 
@@ -86,6 +96,10 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
             string? removeSplitter = null,
             string? clipper = null,
             string? clipperIsland = null,
+            string? guidedTool = null,
+            string? closedWire = null,
+            string? closedInner = null,
+            string? closedOuter = null,
             IReadOnlyDictionary<string, string>? snapshotDefaults = null)
         {
             if (rs == null)
@@ -158,6 +172,19 @@ namespace CNC_Improvements_gcode_solids.SetManagement.Builders
 
             if (clipperIsland != null)
                 rs.PageSnapshot.Values["ClipperIsland"] = clipperIsland;
+
+            // Wire interpretation (only update those provided)
+            if (guidedTool != null)
+                rs.PageSnapshot.Values["GuidedTool"] = guidedTool;
+
+            if (closedWire != null)
+                rs.PageSnapshot.Values["ClosedWire"] = closedWire;
+
+            if (closedInner != null)
+                rs.PageSnapshot.Values["ClosedInner"] = closedInner;
+
+            if (closedOuter != null)
+                rs.PageSnapshot.Values["ClosedOuter"] = closedOuter;
         }
 
         private static void SetMarker(RegionSet rs, string key, int? localIndex0Based, string? rawLine)

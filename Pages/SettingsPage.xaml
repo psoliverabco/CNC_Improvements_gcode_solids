@@ -26,7 +26,6 @@
                 <!-- FREECAD -->
                 <Border Background="#111" CornerRadius="6" BorderBrush="#444" BorderThickness="1" Padding="10" Margin="0,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="FreeCAD" Foreground="#CCC" FontWeight="SemiBold" Margin="0,0,0,8"/>
 
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -59,6 +58,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <!-- ProfileColor -->
@@ -79,18 +79,18 @@
                             <Button Grid.Row="2" Grid.Column="2" Content="Pick..." Tag="TxtClosingColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectClosingColor" Grid.Row="2" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
+                            <!-- CLColor -->
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="CL" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtCLColor" Grid.Row="4" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
+                            <Button Grid.Row="4" Grid.Column="2" Content="Pick..." Tag="TxtCLColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
+                            <Rectangle x:Name="RectCLColor" Grid.Row="4" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+
                             <!-- GraphicTextColor -->
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="GraphText" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="GraphText" Foreground="#DDD" VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtGraphicTextColor" Grid.Row="3" Grid.Column="1" Margin="8,4,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="3" Grid.Column="2" Content="Pick..." Tag="TxtGraphicTextColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
                             <Rectangle x:Name="RectGraphicTextColor" Grid.Row="3" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
                         </Grid>
-
-                        <TextBlock Margin="0,6,0,0"
-                                   Foreground="#AAA"
-                                   FontFamily="Consolas"
-                                   FontSize="12"
-                                   Text="Format #AARRGGBB (example #FF00FF00)"/>
                     </StackPanel>
                 </Border>
 
@@ -108,6 +108,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="ProfileWidth" Foreground="#DDD" VerticalAlignment="Center"/>
@@ -118,6 +119,11 @@
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="ClosingWidth" Foreground="#DDD" VerticalAlignment="Center"/>
                             <TextBox x:Name="TxtClosingWidth" Grid.Row="2" Grid.Column="1" Margin="8,4,0,4"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="CLWidth" Foreground="#DDD" VerticalAlignment="Center"/>
+                            <TextBox x:Name="TxtCLWidth" Grid.Row="3" Grid.Column="1" Margin="8,4,0,4"/>
+
+
                         </Grid>
                     </StackPanel>
                 </Border>

@@ -190,5 +190,29 @@ namespace CNC_Improvements_gcode_solids.Properties {
                 this["SnapRad"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("#FFFF00FF")]
+        public string CLColor {
+            get {
+                return ((string)(this["CLColor"]));
+            }
+            set {
+                this["CLColor"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("2")]
+        public double CLWidth {
+            get {
+                return ((double)(this["CLWidth"]));
+            }
+            set {
+                this["CLWidth"] = value;
+            }
+        }
     }
 }

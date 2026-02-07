@@ -89,6 +89,42 @@
                  Checked="MillOptionRadio_Changed"
                  Unchecked="MillOptionRadio_Changed"
                  PreviewMouseLeftButtonDown="RadioToggle_PreviewMouseLeftButtonDown"/>
+                    
+                    <RadioButton x:Name="GuidedTool"
+                 Content="Guided Tool"
+                 Margin="22,8,0,0"
+                 GroupName="wiregroup"
+                 Checked="MillOptionRadio_Changed"
+                 Unchecked="MillOptionRadio_Changed"
+                 PreviewMouseLeftButtonDown="RadioToggle_PreviewMouseLeftButtonDown"/>
+
+
+                    <RadioButton x:Name="ClosedWire"
+                 Content="Closed CL Wire"
+                 Margin="22,8,0,0"
+                 GroupName="wiregroup"
+                 Checked="MillOptionRadio_Changed"
+                 Unchecked="MillOptionRadio_Changed"
+                 PreviewMouseLeftButtonDown="RadioToggle_PreviewMouseLeftButtonDown"/>
+
+                  
+                    <RadioButton x:Name="ClosedInner"
+                 Content="Closed Wire Pocket"
+                 Margin="22,8,0,0"
+                 GroupName="wireinoutgroup"
+                 Checked="MillOptionRadio_Changed"
+                 Unchecked="MillOptionRadio_Changed"
+                 PreviewMouseLeftButtonDown="RadioToggle_PreviewMouseLeftButtonDown"/>
+
+                    <RadioButton x:Name="ClosedOuter"
+                 Content="Closed Wire Mill Outer"
+                 Margin="22,8,0,0"
+                 GroupName="wireinoutgroup"
+                 Checked="MillOptionRadio_Changed"
+                 Unchecked="MillOptionRadio_Changed"
+                 PreviewMouseLeftButtonDown="RadioToggle_PreviewMouseLeftButtonDown"/>
+
+
                 </StackPanel>
 
 

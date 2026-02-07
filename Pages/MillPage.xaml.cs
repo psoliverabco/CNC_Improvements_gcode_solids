@@ -69,7 +69,12 @@ namespace CNC_Improvements_gcode_solids.Pages
         private const string KEY_REMOVE_SPLITTER = "RemoveSplitter";
         private const string KEY_CLIPPER = "Clipper";
         private const string KEY_CLIPPER_ISLAND = "ClipperIsland";
-        private const string KEY_REGION_UID = "__RegionUid";
+        // Wire interpretation (new radios)
+        private const string KEY_WIRE_GUIDED_TOOL = "GuidedTool";
+        private const string KEY_WIRE_CLOSED_WIRE = "ClosedWire";
+        private const string KEY_WIRE_CLOSED_INNER = "ClosedInner";
+        private const string KEY_WIRE_CLOSED_OUTER = "ClosedOuter";
+
 
 
 
@@ -180,13 +185,12 @@ namespace CNC_Improvements_gcode_solids.Pages
                 TxtToolDia.Text = GetSnapshotOrDefault(set, KEY_TOOL_DIA, "");
                 TxtToolLen.Text = GetSnapshotOrDefault(set, KEY_TOOL_LEN, "");
 
-
                 // Restore radios (DECOUPLED: treat each as independent)
                 string snapFuse = GetSnapshotOrDefault(set, KEY_FUSEALL, "0");
                 string snapClipper = GetSnapshotOrDefault(set, KEY_CLIPPER, "0");
                 string snapRemove = GetSnapshotOrDefault(set, KEY_REMOVE_SPLITTER, "0");
                 string snapClipperIsland = GetSnapshotOrDefault(set, KEY_CLIPPER_ISLAND, "0");
-                // Restore radios (DECOUPLED: treat each as independent)
+
                 if (Fuseall != null)
                     Fuseall.IsChecked = (snapFuse == "1");
 
@@ -198,6 +202,23 @@ namespace CNC_Improvements_gcode_solids.Pages
 
                 if (ClipperIsland != null)
                     ClipperIsland.IsChecked = (snapClipperIsland == "1");
+
+                // Restore wire interpretation radios (GuidedTool / ClosedWire)
+                string snapGuidedTool = GetSnapshotOrDefault(set, KEY_WIRE_GUIDED_TOOL, "1");
+                string snapClosedWire = GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_WIRE, "0");
+                string snapClosedInner = GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_INNER, "0");
+                string snapClosedOuter = GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_OUTER, "1");
+
+                // Enforce sane defaults if older projects have neither set
+                bool wantGuided = (snapGuidedTool == "1");
+                bool wantClosed = (snapClosedWire == "1");
+                if (!wantGuided && !wantClosed)
+                    wantGuided = true;
+
+                if (GuidedTool != null) GuidedTool.IsChecked = wantGuided;
+                if (ClosedWire != null) ClosedWire.IsChecked = wantClosed;
+                if (ClosedInner != null) ClosedInner.IsChecked = (snapClosedInner == "1");
+                if (ClosedOuter != null) ClosedOuter.IsChecked = (snapClosedOuter == "1");
 
                 // Restore marker indices by stored marker line TEXT
                 planeZIndex = FindIndexByMarkerText(GetSnapshotOrDefault(set, KEY_PLANEZ_TEXT, ""));
@@ -256,8 +277,6 @@ namespace CNC_Improvements_gcode_solids.Pages
                     }
                 }
 
-
-
                 // Resolve status + resolved range against current editor text
                 ResolveAndUpdateMillStatus(set, GetGcodeLines());
             }
@@ -272,6 +291,7 @@ namespace CNC_Improvements_gcode_solids.Pages
                 RefreshHighlighting();
             }
         }
+
 
 
 
@@ -452,12 +472,16 @@ namespace CNC_Improvements_gcode_solids.Pages
                 fuseAll: (Fuseall?.IsChecked == true) ? "1" : "0",
                 clipper: (Clipper?.IsChecked == true) ? "1" : "0",
                 removeSplitter: (RemoveSplitter?.IsChecked == true) ? "1" : "0",
-                clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0"
-                
+                clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0",
+                guidedTool: (GuidedTool?.IsChecked == true) ? "1" : "0",
+                closedWire: (ClosedWire?.IsChecked == true) ? "1" : "0",
+                closedInner: (ClosedInner?.IsChecked == true) ? "1" : "0",
+                closedOuter: (ClosedOuter?.IsChecked == true) ? "1" : "0"
             );
 
             ResolveAndUpdateMillStatus(set, GetGcodeLines());
         }
+
 
 
 
@@ -608,20 +632,25 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             // Drive the canonical builder/edit path
             BuildMillRegion.EditExisting(
-                set,
-                regionLines: regionRaw,
-                planeZIndex: planeLocal,
-                startXIndex: sxLocal,
-                startYIndex: syLocal,
-                endXIndex: exLocal,
-                endYIndex: eyLocal,
-                txtToolDia: TxtToolDia?.Text ?? "",
-                txtToolLen: TxtToolLen?.Text ?? "",
-                fuseAll: (Fuseall?.IsChecked == true) ? "1" : "0",
-                removeSplitter: (RemoveSplitter?.IsChecked == true) ? "1" : "0",
-                clipper: (Clipper?.IsChecked == true) ? "1" : "0",
-                clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0"
-            );
+     set,
+     regionLines: regionRaw,
+     planeZIndex: planeLocal,
+     startXIndex: sxLocal,
+     startYIndex: syLocal,
+     endXIndex: exLocal,
+     endYIndex: eyLocal,
+     txtToolDia: TxtToolDia?.Text ?? "",
+     txtToolLen: TxtToolLen?.Text ?? "",
+     fuseAll: (Fuseall?.IsChecked == true) ? "1" : "0",
+     removeSplitter: (RemoveSplitter?.IsChecked == true) ? "1" : "0",
+     clipper: (Clipper?.IsChecked == true) ? "1" : "0",
+     clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0",
+     guidedTool: (GuidedTool?.IsChecked == true) ? "1" : "0",
+     closedWire: (ClosedWire?.IsChecked == true) ? "1" : "0",
+     closedInner: (ClosedInner?.IsChecked == true) ? "1" : "0",
+     closedOuter: (ClosedOuter?.IsChecked == true) ? "1" : "0"
+ );
+
 
             // If plane Z was outside the region, keep your old behaviour: store unanchored normalized text.
             if (planeLocal < 0 && planeZIndex >= 0 && planeZIndex < allLines.Count)
@@ -1418,6 +1447,8 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             List<string> outLines = new();
 
+           
+
             foreach (var m in moves)
             {
                 if (m.Type == "LINE")
@@ -1565,6 +1596,26 @@ namespace CNC_Improvements_gcode_solids.Pages
                 bool isClipperPath = optClipper || optClipperIsland;
                 bool includeIslands = optClipperIsland;
 
+                // Per-set wire interpretation (persisted in RegionSet snapshot)
+                bool isClosedWire = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_WIRE, "0") == "1");
+                bool cwInner = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_INNER, "0") == "1");
+                bool cwOuter = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_OUTER, "1") == "1");
+
+                // Closed CL Wire: behave as if "Create Clipper Solid" is selected.
+                // (Ignore GuidedTool/Fuse path selection for this set.)
+                if (isClosedWire)
+                {
+                    isClipperPath = true;
+
+                    // includeIslands flag is irrelevant for ClosedWire (MillViewWindow decides output based on cwInner/cwOuter),
+                    // but keep it true to ensure island parsing is enabled if present.
+                    includeIslands = true;
+                }
+
+
+
+
+
                 // -----------------------------
                 // 2) Build transform text (common)
                 // -----------------------------
@@ -1683,7 +1734,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // NEW: per-set wire mode flags for viewer/export
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
                     }
                     else if (m.Type == "ARC_CW" || m.Type == "ARC_CCW")
@@ -1712,18 +1768,15 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // NEW: per-set wire mode flags for viewer/export
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
                     }
                 }
-
-
-
-
-
-
-
-
 
                 // Create viewer and ask it for the python-friendly clipper body text.
                 // IMPORTANT: use the return value directly (do NOT re-fetch it via reflection).
@@ -1738,11 +1791,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
                 if (string.IsNullOrWhiteSpace(clipperBody))
                     throw new Exception("Clipper export failed: BuildClipperExportText() returned empty text.");
-
-
-
-
-
 
                 // Build final CLIPPER_TEXT for python: TLENGTH + ZPLANE + body (NO TDIA)
                 var sbClip = new StringBuilder();
@@ -1776,6 +1824,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 MessageBox.Show(ex.Message, "Mill Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
 
@@ -1855,6 +1904,22 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
                 bool isClipperPath = optClipper || optClipperIsland;
                 bool includeIslands = optClipperIsland;
+
+                // Per-set wire interpretation (persisted in RegionSet snapshot)
+                bool isClosedWire = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_WIRE, "0") == "1");
+                bool cwInner = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_INNER, "0") == "1");
+                bool cwOuter = (GetSnapshotOrDefault(set, KEY_WIRE_CLOSED_OUTER, "1") == "1");
+
+                // Closed CL Wire: behave as if "Create Clipper Solid" is selected for this set.
+                if (isClosedWire)
+                {
+                    isClipperPath = true;
+                    includeIslands = true;
+                }
+
+
+
+
 
                 // Fetch transform for THIS region/set name
                 main.TryGetTransformForRegion(
@@ -2006,8 +2071,14 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // IMPORTANT: carry Closed CL Wire mode into the viewer/export
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
+                    
                     }
                     else if (m.Type == "ARC_CW" || m.Type == "ARC_CCW")
                     {
@@ -2035,8 +2106,14 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // IMPORTANT: carry Closed CL Wire mode into the viewer/export
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
+
                     }
                 }
 
@@ -2047,7 +2124,6 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 vw.LoadSegmentsForClipper(segs);
 
                 // This should populate the internal clipper export body text
-                vw.BuildClipperExportText(includeIslands);
                 string clipperBody = vw.BuildClipperExportText(includeIslands) ?? string.Empty;
 
 
@@ -2299,6 +2375,25 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                         continue;
                     }
 
+                    // ---------- Wire mode flags (from set snapshot) ----------
+                    bool snapGuided = (GetSnapshotOrDefault(set, "GuidedTool", "1") == "1");
+                    bool snapClosedWire = (GetSnapshotOrDefault(set, "ClosedWire", "0") == "1");
+                    bool snapInner = (GetSnapshotOrDefault(set, "ClosedInner", "0") == "1");
+                    bool snapOuter = (GetSnapshotOrDefault(set, "ClosedOuter", "1") == "1");
+
+                    bool isClosedWire = snapClosedWire; // ClosedWire wins if dirty state
+                    bool cwInner = false;
+                    bool cwOuter = false;
+
+                    if (isClosedWire)
+                    {
+                        cwInner = snapInner;
+                        cwOuter = snapOuter;
+
+                        if (!cwInner && !cwOuter) cwOuter = true;           // consistent default
+                        if (cwInner && cwOuter) { cwInner = false; cwOuter = true; } // prefer outer
+                    }
+
                     // one color per SET (region)
                     Brush setColor = Brushes.Gray;
                     if (ColorList != null && ColorList.Count > 0)
@@ -2308,6 +2403,10 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                     }
 
                     sbLog.AppendLine($"--- SET {setIdx + 1}/{main.MillSets.Count}: {set.Name} ---");
+
+                    sbLog.AppendLine($"WireMode: {(isClosedWire ? "ClosedWire" : "GuidedTool")}");
+                    if (isClosedWire)
+                        sbLog.AppendLine($"ClosedWire: {(cwInner ? "Pocket/Inner" : "Outer")}");
 
                     // Per-set tool dia (THIS is the fix)
                     bool hasSetTool = TryGetToolDiaForSet(set, out double setToolDia);
@@ -2406,7 +2505,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                                 Ty = ty,
                                 Tz = tz,
 
-                                RegionColor = setColor
+                                RegionColor = setColor,
+
+                                // NEW: per-set wire mode flags for viewer
+                                IsClosedWire = isClosedWire,
+                                ClosedWireInner = cwInner,
+                                ClosedWireOuter = cwOuter
                             });
                         }
                         else if (m.Type == "ARC_CW" || m.Type == "ARC_CCW")
@@ -2438,7 +2542,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                                 Ty = ty,
                                 Tz = tz,
 
-                                RegionColor = setColor
+                                RegionColor = setColor,
+
+                                // NEW: per-set wire mode flags for viewer
+                                IsClosedWire = isClosedWire,
+                                ClosedWireInner = cwInner,
+                                ClosedWireOuter = cwOuter
                             });
                         }
                     }
@@ -2512,6 +2621,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 MessageBox.Show(ex.Message, "View All Milling Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
 
@@ -2774,6 +2884,30 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 if (set == null)
                     throw new Exception("Select a MILL region first.");
 
+                // ---------- Wire mode flags (from set snapshot) ----------
+                // Defaults:
+                //  - GuidedTool ON for old projects
+                //  - ClosedWire OFF
+                //  - ClosedWire default is OUTER if neither inner/outer set
+                bool snapGuided = (GetSnapshotOrDefault(set, "GuidedTool", "1") == "1");
+                bool snapClosedWire = (GetSnapshotOrDefault(set, "ClosedWire", "0") == "1");
+                bool snapInner = (GetSnapshotOrDefault(set, "ClosedInner", "0") == "1");
+                bool snapOuter = (GetSnapshotOrDefault(set, "ClosedOuter", "1") == "1");
+
+                // ClosedWire wins if both are accidentally on
+                bool isClosedWire = snapClosedWire;
+                bool cwInner = false;
+                bool cwOuter = false;
+
+                if (isClosedWire)
+                {
+                    cwInner = snapInner;
+                    cwOuter = snapOuter;
+
+                    if (!cwInner && !cwOuter) cwOuter = true;      // consistent default
+                    if (cwInner && cwOuter) { cwInner = false; cwOuter = true; } // prefer outer
+                }
+
                 // --- Build geometry for THIS set ---
                 if (!TryGetSetRegionRangeByMarkers(set, allLines,
                         out int regionStartIndex, out int regionEndIndex,
@@ -2846,7 +2980,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // NEW: per-set wire mode flags for viewer
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
                     }
                     else if (m.Type == "ARC_CW" || m.Type == "ARC_CCW")
@@ -2875,7 +3014,12 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                             Tx = tx,
                             Ty = ty,
                             Tz = tz,
-                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor)
+                            RegionColor = Utilities.UiUtilities.HexBrush(Settings.Default.ProfileColor),
+
+                            // NEW: per-set wire mode flags for viewer
+                            IsClosedWire = isClosedWire,
+                            ClosedWireInner = cwInner,
+                            ClosedWireOuter = cwOuter
                         });
                     }
                 }
@@ -2896,6 +3040,9 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 sbLog.AppendLine($"@TRANS RotZ(CW+): {rotZDeg.ToString("0.###", inv)}");
                 sbLog.AppendLine($"@TRANS RotY: {rotYDeg.ToString("0.###", inv)}");
                 sbLog.AppendLine($"@TRANS Tx={tx.ToString("0.###", inv)}  Ty={ty.ToString("0.###", inv)}  Tz={tz.ToString("0.###", inv)}");
+                sbLog.AppendLine($"WireMode: {(isClosedWire ? "ClosedWire" : "GuidedTool")}");
+                if (isClosedWire)
+                    sbLog.AppendLine($"ClosedWire: {(cwInner ? "Pocket/Inner" : "Outer")}");
                 sbLog.AppendLine($"Segments (viewer list): {segs.Count}");
                 sbLog.AppendLine();
 
@@ -2944,6 +3091,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 MessageBox.Show(ex.Message, "View Milling Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
 

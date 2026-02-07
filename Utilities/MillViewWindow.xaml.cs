@@ -139,6 +139,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             public Brush RegionColor { get; set; } = Brushes.Gray;
 
+            // NEW: wire interpretation flags (per SET; repeated on each seg for convenience)
+            public bool IsClosedWire { get; set; } = false;     // Closed CL Wire mode
+            public bool ClosedWireInner { get; set; } = false;  // Pocket fill
+            public bool ClosedWireOuter { get; set; } = false;  // Outer box minus profile fill
+
+
         }
 
         private double ToolRadWorldForSeg(PathSeg s)
@@ -276,6 +282,18 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // Settings-driven stroke widths
         private double _profileWidth = Settings.Default.ProfileWidth;
 
+        // NEW: CL overlay style (settings-driven)
+        private Brush _clStroke = Brushes.Magenta;
+        private double _clWidth = 2.0;
+
+        // NEW: Closing fill (settings-driven)
+        private Brush _closingFill = Brushes.Gray;
+
+        // NEW: CL toggle state (GuidedTool only; ClosedWire forces CL on)
+        private bool _showCL = false;
+
+        // NEW: avoid spamming the same ClosedWire diagnostic repeatedly
+        private readonly HashSet<string> _closedWireDiagShown = new HashSet<string>(StringComparer.Ordinal);
 
 
 
@@ -289,12 +307,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             TxtSummary.Foreground = _graphicText;
 
-
             CLIPPER_CHORD_TOL = Settings.Default.ClipperInputPolyTol;    // world units
-            SNAP_TOL = Settings.Default.SnapRad;   // world units
+            SNAP_TOL = Settings.Default.SnapRad;                         // world units
             MIN_ARC_POINTS = Settings.Default.MinArcPoints;
-
-
 
             _toolDia = toolDia;
             _toolLen = toolLen;
@@ -308,16 +323,15 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // Geometry must still render even if display is NaN.
             _toolRad = double.IsFinite(toolDia) ? toolDia * 0.5 : 0.0;
 
-
-
             _segsRaw = segs ?? new List<PathSeg>();
             _segs = TransformSegmentsForView(_segsRaw, false);  // viewer-only transform applied here
-
 
             TopCanvas.RenderTransform = _vp.Group;
             TopCanvas.RenderTransformOrigin = new Point(0, 0);
 
-
+            // NEW: CL toggle default (GuidedTool only; ClosedWire forces CL on in Render())
+            _showCL = false;
+            _closedWireDiagShown.Clear();
 
             Loaded += MillViewWindow_Loaded;
             SizeChanged += MillViewWindow_SizeChanged;
@@ -326,6 +340,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             UpdateSummary();
             UpdateInfoPanel();
         }
+
 
 
 
@@ -348,8 +363,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
             try
             {
                 _profileWidth = Settings.Default.ProfileWidth;
-
-
             }
             catch
             {
@@ -369,9 +382,42 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 _graphicText = Brushes.Yellow;
             }
 
+            // NEW: CL stroke + width
+            try
+            {
+                _clStroke = UiUtilities.HexBrush(Settings.Default.CLColor);
+            }
+            catch
+            {
+                _clStroke = Brushes.Magenta;
+            }
+
+            try
+            {
+                _clWidth = Settings.Default.CLWidth;
+            }
+            catch
+            {
+                _clWidth = 2.0;
+            }
+
+            if (!double.IsFinite(_clWidth) || _clWidth <= 0.0)
+                _clWidth = 2.0;
+
+            // NEW: Closing fill color
+            try
+            {
+                _closingFill = UiUtilities.HexBrush(Settings.Default.ClosingColor);
+            }
+            catch
+            {
+                _closingFill = Brushes.Gray;
+            }
+
             if (InfoText != null)
                 InfoText.Foreground = _graphicText;
         }
+
 
         private static void BuildRegionBrushes(Brush regionColor, out Brush fill, out Brush stroke)
         {
@@ -444,11 +490,39 @@ namespace CNC_Improvements_gcode_solids.Utilities
         {
             FitAndRender();
         }
+        private void BtnToggleCL_Click(object sender, RoutedEventArgs e)
+        {
+            _showCL = !_showCL;
+            SyncToggleButtonText();
+            Render();
+        }
 
         private void BtnReset_Click(object sender, RoutedEventArgs e)
         {
             _vp.Reset();
+            Render();
         }
+        private bool HasAnyClosedWire()
+        {
+            if (_segs == null || _segs.Count == 0) return false;
+            for (int i = 0; i < _segs.Count; i++)
+            {
+                var s = _segs[i];
+                if (s != null && s.IsClosedWire)
+                    return true;
+            }
+            return false;
+        }
+
+        private void ShowClosedWireButtonsNotUsedMessage()
+        {
+            MessageBox.Show(
+                "Closed CL Wire mode is active.\n\nThe Raw / Pre-Clipper / Clipper / Candidate / TrueShape displays are not used for Closed CL Wire.\nClosed CL Wire always displays the CL wire (and inner/outer shading when closed).",
+                "Closed CL Wire",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
 
         private void BtnToggleLabels_Click(object sender, RoutedEventArgs e)
         {
@@ -460,8 +534,13 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private void SyncToggleButtonText()
         {
             if (BtnToggleLabels != null)
-                BtnToggleLabels.Content = _showLabels ? "Labels: OFF" : "Labels: ON";
+                BtnToggleLabels.Content = _showLabels ? "Labels: ON" : "Labels: OFF";
+
+            if (BtnToggleCL != null)
+                BtnToggleCL.Content = _showCL ? "CL: ON" : "CL: OFF";
         }
+
+
 
         // ------------------------------------------
         // Mouse
@@ -622,106 +701,524 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
         private double WR2SR(double rWorld) => rWorld * _scale;
 
+
+
+        private static bool WorldNear(double x1, double y1, double x2, double y2, double tol)
+        {
+            double dx = x1 - x2;
+            double dy = y1 - y2;
+            return (dx * dx + dy * dy) <= (tol * tol);
+        }
+
+        private bool TryBuildClosedWireBoundaryPointsWorld(
+    List<PathSeg> segs,
+    out List<Point> ptsWorld,
+    out string failReason)
+        {
+            // ClosedWire = must be a single chain AND must close.
+            return TryBuildWireDisplayPointsWorld(segs, requireClosedLoop: true, out ptsWorld, out failReason);
+        }
+
+
+
+        // Same sampling/display logic as Closed CL Wire, but does NOT require the loop to close.
+        // Used for GuidedTool CL overlay so arcs render correctly (not endpoint chords).
+        private bool TryBuildWireDisplayPointsWorld(
+            List<PathSeg> segs,
+            bool requireClosedLoop,
+            out List<Point> ptsWorld,
+            out string failReason)
+        {
+            ptsWorld = new List<Point>();
+            failReason = "";
+
+            if (segs == null || segs.Count == 0)
+            {
+                failReason = "Empty path.";
+                return false;
+            }
+
+            // Verify single chained path in listed order
+            double curX = segs[0].X1;
+            double curY = segs[0].Y1;
+            ptsWorld.Add(new Point(curX, curY));
+
+            for (int i = 0; i < segs.Count; i++)
+            {
+                var s = segs[i];
+
+                if (!WorldNear(curX, curY, s.X1, s.Y1, SNAP_TOL))
+                {
+                    failReason = $"Path is not a single chained wire (break at seg {s.Index}).";
+                    return false;
+                }
+
+                if (s.Type == "LINE")
+                {
+                    ptsWorld.Add(new Point(s.X2, s.Y2));
+                    curX = s.X2;
+                    curY = s.Y2;
+                    continue;
+                }
+
+                if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
+                {
+                    if (!TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2, out double cx, out double cy, out double r))
+                    {
+                        failReason = $"Arc circle solve failed (seg {s.Index}).";
+                        return false;
+                    }
+
+                    bool ccw = (s.Type == "ARC3_CCW");
+
+                    double a1 = Math.Atan2(s.Y1 - cy, s.X1 - cx);
+                    double a2 = Math.Atan2(s.Y2 - cy, s.X2 - cx);
+
+                    double sweep = ccw ? CcwDelta(a1, a2) : -CcwDelta(a2, a1);
+                    double sweepAbs = Math.Abs(sweep);
+
+                    int divs = DivsForArcByChordTol(r, sweepAbs, CLIPPER_CHORD_TOL, minDivs: Math.Max(8, MIN_ARC_POINTS), maxDivs: 5000);
+                    if (divs < 2) divs = 2;
+
+                    // Add sampled points excluding the first (already in ptsWorld)
+                    for (int k = 1; k <= divs; k++)
+                    {
+                        double ang = a1 + sweep * k / divs;
+                        double x = cx + Math.Cos(ang) * r;
+                        double y = cy + Math.Sin(ang) * r;
+                        ptsWorld.Add(new Point(x, y));
+                    }
+
+                    curX = s.X2;
+                    curY = s.Y2;
+                    continue;
+                }
+
+                failReason = $"Unsupported seg type: {s.Type} (seg {s.Index}).";
+                return false;
+            }
+
+            if (requireClosedLoop)
+            {
+                // Must be closed
+                var first = ptsWorld[0];
+                var last = ptsWorld[ptsWorld.Count - 1];
+                if (!WorldNear(first.X, first.Y, last.X, last.Y, SNAP_TOL))
+                {
+                    failReason = "Loop not closed.";
+                    return false;
+                }
+
+                // Force exact closure for WPF fill stability
+                ptsWorld[ptsWorld.Count - 1] = first;
+            }
+
+            return true;
+        }
+
+
+        private void ShowClosedWireNotClosedDiagOnce(string regionName, string extraReason)
+        {
+            string key = regionName ?? "";
+            if (_closedWireDiagShown.Contains(key))
+                return;
+
+            _closedWireDiagShown.Add(key);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"MILL set \"{regionName}\": Closed CL Wire selected but loop is not closed.");
+            if (!string.IsNullOrWhiteSpace(extraReason))
+                sb.AppendLine(extraReason.Trim());
+            sb.AppendLine("This path can only use GuidedTool.");
+            sb.AppendLine("No pocket/outer shading generated.");
+
+            string msg = sb.ToString();
+
+            // Always notify the user. LogWindow is optional; MessageBox is mandatory.
+            MessageBox.Show(msg, "Closed CL Wire : Not Closed", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+          //if (Settings.Default.LogWindowShow)
+            //{
+              //  var win = new LogWindow("Closed CL Wire : Not Closed", msg) { Owner = this };
+               // win.Show();
+            //}
+        }
+
+
+
+        private void DrawCLPolyline(List<Point> ptsWorld, bool forceOn)
+        {
+            if (ptsWorld == null || ptsWorld.Count < 2)
+                return;
+
+            bool draw = forceOn || _showCL;
+            if (!draw)
+                return;
+
+            var pl = new Polyline
+            {
+                Stroke = _clStroke,
+                StrokeThickness = Math.Max(0.5, _clWidth),
+                Fill = Brushes.Transparent,
+                IsHitTestVisible = false
+            };
+
+            for (int i = 0; i < ptsWorld.Count; i++)
+                pl.Points.Add(W2S(ptsWorld[i].X, ptsWorld[i].Y));
+
+            TopCanvas.Children.Add(pl);
+        }
+
+        private void RenderClosedWireFillInner(List<Point> ptsWorld)
+        {
+            var poly = new Polygon
+            {
+                Stroke = Brushes.Transparent,
+                StrokeThickness = 0,
+                Fill = _closingFill,
+                Opacity = 0.35,
+                IsHitTestVisible = false
+            };
+
+            for (int i = 0; i < ptsWorld.Count; i++)
+                poly.Points.Add(W2S(ptsWorld[i].X, ptsWorld[i].Y));
+
+            TopCanvas.Children.Add(poly);
+        }
+
+        private void RenderClosedWireFillOuter(List<Point> ptsWorldTransformedProfile, List<PathSeg> segsRawForRegion, double rotZDeg, double rotYDeg)
+        {
+            if (ptsWorldTransformedProfile == null || ptsWorldTransformedProfile.Count < 3)
+                return;
+
+            if (segsRawForRegion == null || segsRawForRegion.Count == 0)
+                return;
+
+            // ------------------------------------------------------------
+            // 1) Compute bounds in RAW space (before transform)
+            //    Include arcs by sampling (so bounds match the real shape).
+            // ------------------------------------------------------------
+            double minX = double.PositiveInfinity, maxX = double.NegativeInfinity;
+            double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
+
+            for (int i = 0; i < segsRawForRegion.Count; i++)
+            {
+                var s = segsRawForRegion[i];
+                if (s == null) continue;
+
+                minX = Math.Min(minX, Math.Min(s.X1, s.X2));
+                maxX = Math.Max(maxX, Math.Max(s.X1, s.X2));
+                minY = Math.Min(minY, Math.Min(s.Y1, s.Y2));
+                maxY = Math.Max(maxY, Math.Max(s.Y1, s.Y2));
+
+                if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
+                {
+                    if (TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2, out double cx, out double cy, out double r))
+                    {
+                        bool ccw = (s.Type == "ARC3_CCW");
+
+                        double a1 = Math.Atan2(s.Y1 - cy, s.X1 - cx);
+                        double a2 = Math.Atan2(s.Y2 - cy, s.X2 - cx);
+
+                        double sweep = ccw ? CcwDelta(a1, a2) : -CcwDelta(a2, a1);
+                        double sweepAbs = Math.Abs(sweep);
+
+                        int divs = DivsForArcByChordTol(r, sweepAbs, CLIPPER_CHORD_TOL, minDivs: Math.Max(8, MIN_ARC_POINTS), maxDivs: 2000);
+                        if (divs < 2) divs = 2;
+
+                        for (int k = 0; k <= divs; k++)
+                        {
+                            double ang = a1 + sweep * k / divs;
+                            double x = cx + Math.Cos(ang) * r;
+                            double y = cy + Math.Sin(ang) * r;
+
+                            minX = Math.Min(minX, x);
+                            maxX = Math.Max(maxX, x);
+                            minY = Math.Min(minY, y);
+                            maxY = Math.Max(maxY, y);
+                        }
+                    }
+                }
+            }
+
+            if (!double.IsFinite(minX) || !double.IsFinite(maxX) || !double.IsFinite(minY) || !double.IsFinite(maxY))
+                return;
+
+            const double PAD = 100.0;
+
+            double l = minX - PAD, r2 = maxX + PAD, b = minY - PAD, t = maxY + PAD;
+
+            // ------------------------------------------------------------
+            // 2) Build RAW box corners in requested order, then TRANSFORM them
+            //    (so display box is defined BEFORE the transform matrix).
+            // ------------------------------------------------------------
+            bool mirrorX = IsRotY180(rotYDeg);
+
+            TransformPoint2D(r2, t, rotZDeg, mirrorX, out double p1x, out double p1y); // (maxX,maxY)
+            TransformPoint2D(r2, b, rotZDeg, mirrorX, out double p2x, out double p2y); // (maxX,minY)
+            TransformPoint2D(l, b, rotZDeg, mirrorX, out double p3x, out double p3y); // (minX,minY)
+            TransformPoint2D(l, t, rotZDeg, mirrorX, out double p4x, out double p4y); // (minX,maxY)
+
+            // Box figure (TRANSFORMED world coords -> screen)
+            var rectFig = new PathFigure { StartPoint = W2S(p1x, p1y), IsClosed = true, IsFilled = true };
+            rectFig.Segments.Add(new LineSegment(W2S(p2x, p2y), true));
+            rectFig.Segments.Add(new LineSegment(W2S(p3x, p3y), true));
+            rectFig.Segments.Add(new LineSegment(W2S(p4x, p4y), true));
+            rectFig.Segments.Add(new LineSegment(W2S(p1x, p1y), true));
+
+            // Profile figure (already TRANSFORMED)
+            var profFig = new PathFigure
+            {
+                StartPoint = W2S(ptsWorldTransformedProfile[0].X, ptsWorldTransformedProfile[0].Y),
+                IsClosed = true,
+                IsFilled = true
+            };
+            for (int i = 1; i < ptsWorldTransformedProfile.Count; i++)
+                profFig.Segments.Add(new LineSegment(W2S(ptsWorldTransformedProfile[i].X, ptsWorldTransformedProfile[i].Y), true));
+
+            // EvenOdd fill: box minus profile
+            var pg = new PathGeometry(new[] { rectFig, profFig })
+            {
+                FillRule = System.Windows.Media.FillRule.EvenOdd
+            };
+
+            // Fill (closing color)
+            var fillPath = new Path
+            {
+                Data = pg,
+                Fill = _closingFill,
+                Opacity = 0.35,
+                Stroke = Brushes.Transparent,
+                StrokeThickness = 0,
+                IsHitTestVisible = false
+            };
+            TopCanvas.Children.Add(fillPath);
+
+            // Box stroke in ProfileColor
+            Brush boxStroke;
+            try { boxStroke = UiUtilities.HexBrush(Settings.Default.ProfileColor); }
+            catch { boxStroke = Brushes.Magenta; }
+
+            // Outline only (reuse rectFig geometry)
+            var rectOnly = new PathGeometry(new[] { rectFig.Clone() })
+            {
+                FillRule = System.Windows.Media.FillRule.Nonzero
+            };
+
+            var strokePath = new Path
+            {
+                Data = rectOnly,
+                Fill = Brushes.Transparent,
+                Stroke = boxStroke,
+                StrokeThickness = Math.Max(0.5, _profileWidth),
+                Opacity = 1.0,
+                IsHitTestVisible = false
+            };
+            TopCanvas.Children.Add(strokePath);
+        }
+
+
+
+
+
+
+
+
+
         private void Render()
         {
             TopCanvas.Children.Clear();
             _items.Clear();
 
-            if (_segs.Count == 0)
+            if (_segs == null || _segs.Count == 0)
             {
                 UpdateSummary();
                 UpdateInfoPanel();
                 return;
             }
 
-            // Common settings once (width + text color)
             ApplyViewerStylesFromSettings();
-
             DrawOriginIfInView();
+
+            // Group TRANSFORMED segs by RegionName (preserve first-seen order)
+            var order = new List<string>();
+            var groups = new Dictionary<string, List<PathSeg>>(StringComparer.Ordinal);
 
             for (int i = 0; i < _segs.Count; i++)
             {
                 var s = _segs[i];
-                double toolRadW = ToolRadWorldForSeg(s);
-
-                var item = new RenderItem();
-                item.Seg = s;
-
-                WpfGeometry geo = WpfGeometry.Empty;
-                bool isArc = false;
-                bool isBand = false;
-                double arcR = double.NaN;
-                Point arcCenterW = new Point(double.NaN, double.NaN);
-
-                if (s.Type == "LINE")
+                string key = s.RegionName ?? "";
+                if (!groups.TryGetValue(key, out var list))
                 {
-                    geo = BuildLineCapsuleGeometry(s, toolRadW);
+                    list = new List<PathSeg>();
+                    groups[key] = list;
+                    order.Add(key);
                 }
-                else if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
-                {
-                    isArc = true;
-
-                    if (!TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2, out double cx, out double cy, out double r))
-                    {
-                        var p1 = W2S(s.X1, s.Y1);
-                        var p2 = W2S(s.X2, s.Y2);
-                        double rad = WR2SR(toolRadW);
-
-                        var ggFallback = new GeometryGroup { FillRule = (System.Windows.Media.FillRule)FillRule.NonZero };
-                        ggFallback.Children.Add(new EllipseGeometry(p1, rad, rad));
-                        ggFallback.Children.Add(new EllipseGeometry(p2, rad, rad));
-                        ggFallback.Freeze();
-                        geo = ggFallback;
-                    }
-                    else
-                    {
-                        arcR = r;
-                        arcCenterW = new Point(cx, cy);
-
-                        isBand = (r > toolRadW + 1e-9);
-                        geo = isBand
-                            ? BuildArcBandGeometry(s, cx, cy, r, toolRadW)
-                            : BuildArcSmallPieGeometry(s, cx, cy, r, toolRadW);
-                    }
-                }
-
-                item.IsArc = isArc;
-                item.IsBand = isBand;
-                item.ArcR = arcR;
-                item.ArcCenterWorld = arcCenterW;
-
-                item.Geo = geo;
-
-                // PER-SEGMENT COLOR (THIS is the fix)
-                BuildRegionBrushes(s.RegionColor, out Brush fill, out Brush stroke);
-                item.FillNormal = fill;
-                item.StrokeNormal = stroke;
-
-                var path = new Path
-                {
-                    Data = geo,
-                    Fill = item.FillNormal,
-                    Stroke = item.StrokeNormal,
-                    StrokeThickness = Math.Max(0.5, _profileWidth)
-                };
-
-                item.Path = path;
-                TopCanvas.Children.Add(path);
-
-                if (_showLabels)
-                    DrawLabelForSegment(item);
-
-                _items.Add(item);
-
-                //Debug.WriteLine(s.RegionColor?.ToString() ?? "null");
+                list.Add(s);
             }
 
-            // Selection pass ONCE at the end (don’t repaint everything every loop)
-            ApplySelectionStyles();
+            // Group RAW segs by RegionName (same keys)
+            var rawGroups = new Dictionary<string, List<PathSeg>>(StringComparer.Ordinal);
+            if (_segsRaw != null)
+            {
+                for (int i = 0; i < _segsRaw.Count; i++)
+                {
+                    var s = _segsRaw[i];
+                    if (s == null) continue;
 
+                    string key = s.RegionName ?? "";
+                    if (!rawGroups.TryGetValue(key, out var list))
+                    {
+                        list = new List<PathSeg>();
+                        rawGroups[key] = list;
+                    }
+                    list.Add(s);
+                }
+            }
+
+            for (int gi = 0; gi < order.Count; gi++)
+            {
+                string regionKey = order[gi];
+                var segsGroup = groups[regionKey];
+                if (segsGroup == null || segsGroup.Count == 0)
+                    continue;
+
+                bool isClosedWire = segsGroup[0].IsClosedWire;
+                bool inner = segsGroup[0].ClosedWireInner;
+                bool outer = segsGroup[0].ClosedWireOuter;
+
+                if (isClosedWire)
+                {
+                    // ClosedWire: CL always shown; optional fill if closed
+                    if (!TryBuildClosedWireBoundaryPointsWorld(segsGroup, out var ptsWorld, out string failReason))
+                    {
+                        ShowClosedWireNotClosedDiagOnce(regionKey, failReason);
+
+                        // still draw CL as best-effort polyline using endpoints in order
+                        var ptsFallback = new List<Point>();
+                        if (segsGroup.Count > 0)
+                        {
+                            ptsFallback.Add(new Point(segsGroup[0].X1, segsGroup[0].Y1));
+                            for (int i = 0; i < segsGroup.Count; i++)
+                                ptsFallback.Add(new Point(segsGroup[i].X2, segsGroup[i].Y2));
+                        }
+                        DrawCLPolyline(ptsFallback, forceOn: true);
+                        continue;
+                    }
+
+                    if (inner)
+                    {
+                        RenderClosedWireFillInner(ptsWorld);
+                    }
+                    else if (outer)
+                    {
+                        rawGroups.TryGetValue(regionKey, out var rawForRegion);
+                        RenderClosedWireFillOuter(
+                            ptsWorld,
+                            rawForRegion ?? segsGroup,     // fallback if raw missing
+                            segsGroup[0].RotZDeg,
+                            segsGroup[0].RotYDeg);
+                    }
+
+                    DrawCLPolyline(ptsWorld, forceOn: true);
+                    continue;
+                }
+
+                // GuidedTool (existing behaviour)
+                for (int i = 0; i < segsGroup.Count; i++)
+                {
+                    var s = segsGroup[i];
+                    double toolRadW = ToolRadWorldForSeg(s);
+
+                    var item = new RenderItem();
+                    item.Seg = s;
+
+                    WpfGeometry geo = WpfGeometry.Empty;
+                    bool isArc = false;
+                    bool isBand = false;
+                    double arcR = double.NaN;
+                    Point arcCenterW = new Point(double.NaN, double.NaN);
+
+                    if (s.Type == "LINE")
+                    {
+                        geo = BuildLineCapsuleGeometry(s, toolRadW);
+                    }
+                    else if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
+                    {
+                        isArc = true;
+
+                        if (!TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2, out double cx, out double cy, out double r))
+                        {
+                            var p1 = W2S(s.X1, s.Y1);
+                            var p2 = W2S(s.X2, s.Y2);
+                            double rad = WR2SR(toolRadW);
+
+                            var ggFallback = new GeometryGroup { FillRule = (System.Windows.Media.FillRule)FillRule.NonZero };
+                            ggFallback.Children.Add(new EllipseGeometry(p1, rad, rad));
+                            ggFallback.Children.Add(new EllipseGeometry(p2, rad, rad));
+                            ggFallback.Freeze();
+                            geo = ggFallback;
+                        }
+                        else
+                        {
+                            arcR = r;
+                            arcCenterW = new Point(cx, cy);
+
+                            isBand = (r > toolRadW + 1e-9);
+                            geo = isBand
+                                ? BuildArcBandGeometry(s, cx, cy, r, toolRadW)
+                                : BuildArcSmallPieGeometry(s, cx, cy, r, toolRadW);
+                        }
+                    }
+
+                    item.IsArc = isArc;
+                    item.IsBand = isBand;
+                    item.ArcR = arcR;
+                    item.ArcCenterWorld = arcCenterW;
+
+                    item.Geo = geo;
+
+                    BuildRegionBrushes(s.RegionColor, out Brush fill, out Brush stroke);
+                    item.FillNormal = fill;
+                    item.StrokeNormal = stroke;
+
+                    var path = new Path
+                    {
+                        Data = geo,
+                        Fill = item.FillNormal,
+                        Stroke = item.StrokeNormal,
+                        StrokeThickness = Math.Max(0.5, _profileWidth)
+                    };
+
+                    item.Path = path;
+                    TopCanvas.Children.Add(path);
+
+                    if (_showLabels)
+                        DrawLabelForSegment(item);
+
+                    _items.Add(item);
+                }
+
+                // GuidedTool: CL optional overlay when toggle is ON (unchanged here)
+                if (_showCL)
+                {
+                    var ptsWire = new List<Point>();
+                    ptsWire.Add(new Point(segsGroup[0].X1, segsGroup[0].Y1));
+                    for (int i = 0; i < segsGroup.Count; i++)
+                        ptsWire.Add(new Point(segsGroup[i].X2, segsGroup[i].Y2));
+
+                    DrawCLPolyline(ptsWire, forceOn: false);
+                }
+            }
+
+            ApplySelectionStyles();
             UpdateSummary();
             UpdateInfoPanel();
         }
+
+
+
+
 
 
 
@@ -1026,12 +1523,18 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     Ty = s.Ty,
                     Tz = s.Tz,
 
-                    RegionColor = s.RegionColor
+                    RegionColor = s.RegionColor,
+
+                    // FIX: preserve ClosedWire mode flags through transform
+                    IsClosedWire = s.IsClosedWire,
+                    ClosedWireInner = s.ClosedWireInner,
+                    ClosedWireOuter = s.ClosedWireOuter
                 });
             }
 
             return outList;
         }
+
 
 
 
@@ -1071,6 +1574,48 @@ namespace CNC_Improvements_gcode_solids.Utilities
             return deg;
         }
 
+        private static bool SnapIsChecked(SetManagement.UiStateSnapshot? snap, string key)
+        {
+            if (snap == null || snap.Values == null) return false;
+            if (!snap.Values.TryGetValue(key, out string v)) return false;
+            return v == "1";
+        }
+
+        private static void GetMillWireModes(SetManagement.RegionSet set, out bool isClosedWire, out bool inner, out bool outer)
+        {
+            // Defaults: GuidedTool behaviour (ClosedWire off)
+            isClosedWire = false;
+            inner = false;
+            outer = false;
+
+            var snap = set?.PageSnapshot;
+
+            bool guided = SnapIsChecked(snap, "GuidedTool");
+            bool closed = SnapIsChecked(snap, "ClosedWire");
+            bool inr = SnapIsChecked(snap, "ClosedInner");
+            bool outr = SnapIsChecked(snap, "ClosedOuter");
+
+            // wiregroup mutual exclusion (ClosedWire wins if both somehow true)
+            isClosedWire = closed && !guided ? true : (closed ? true : false);
+
+            if (!isClosedWire)
+                return;
+
+            // inout only meaningful for ClosedWire
+            inner = inr;
+            outer = outr;
+
+            // consistent default: OUTER if neither selected
+            if (!inner && !outer)
+                outer = true;
+
+            // if both selected (bad state) prefer OUTER (consistent)
+            if (inner && outer)
+            {
+                inner = false;
+                outer = true;
+            }
+        }
 
 
 
@@ -1185,8 +1730,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private Clipper2Lib.Paths64 BuildClipperSubjectPolygonsForUnion(double scale, double chordTol)
         {
             var subj = new Clipper2Lib.Paths64();
+            if (_segs == null || _segs.Count == 0)
+                return subj;
 
-            // de-dupe identical endpoint circles (same center + same radius in scaled ints)
+            // IMPORTANT: Closed CL Wire sets do NOT participate in the toolpath/clipper pipeline
             var circleKeys = new HashSet<(long cx, long cy, long r)>();
 
             for (int i = 0; i < _segs.Count; i++)
@@ -1195,36 +1742,48 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (s == null)
                     continue;
 
+                if (s.IsClosedWire)
+                    continue;
+
                 double toolRad = ToolRadWorldForSeg(s);
 
-                // 1) segment "body" polygon
-                Clipper2Lib.Path64 body = new();
+                Clipper2Lib.Path64 body;
 
                 if (s.Type == "LINE")
                 {
+                    // Correct helper name in your file:
                     body = BuildLineBodyPolygon(s, toolRad, scale);
-                }
-                else if ((s.Type == "ARC3_CW" || s.Type == "ARC3_CCW") &&
-                         TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2,
-                                              out _, out _, out double r) &&
-                         r > toolRad + 1e-9)
-                {
-                    body = BuildArcBandPolygon(s, toolRad, scale, chordTol);
                 }
                 else if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
                 {
-                    body = BuildArcPiePolygon(s, toolRad, scale, chordTol);
+                    // if arc radius > toolRad => band; else pie
+                    if (!TryCircleFrom3Points(s.X1, s.Y1, s.Xm, s.Ym, s.X2, s.Y2, out double cx, out double cy, out double r))
+                    {
+                        // fallback: just circles at endpoints
+                        AddCircleSubject(subj, circleKeys, s.X1, s.Y1, toolRad, scale, chordTol, $"C1 Seg={s.Index}");
+                        AddCircleSubject(subj, circleKeys, s.X2, s.Y2, toolRad, scale, chordTol, $"C2 Seg={s.Index}");
+                        continue;
+                    }
+
+                    body = (r > toolRad + 1e-9)
+                        ? BuildArcBandPolygon(s, toolRad, scale, chordTol)
+                        : BuildArcPiePolygon(s, toolRad, scale, chordTol);
+                }
+                else
+                {
+                    continue;
                 }
 
-                AddSubjectIfValid(subj, body, $"Body Seg={s.Index} {s.Type}");
+                AddSubjectIfValid(subj, body, $"BODY Seg={s.Index}");
 
-                // 2) endpoint circles (caps) - de-duped
                 AddCircleSubject(subj, circleKeys, s.X1, s.Y1, toolRad, scale, chordTol, $"C1 Seg={s.Index}");
                 AddCircleSubject(subj, circleKeys, s.X2, s.Y2, toolRad, scale, chordTol, $"C2 Seg={s.Index}");
             }
 
             return subj;
         }
+
+
 
         // Make a Path64 "open" (no duplicated last=first) for consistent area + listing.
         private static Clipper2Lib.Path64 MakeOpen(Clipper2Lib.Path64 p)
@@ -1283,6 +1842,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // ------------------------------------------
         private void BtnClipperDispaly_Click(object sender, RoutedEventArgs e)
         {
+            if (HasAnyClosedWire())
+            {
+                ShowClosedWireButtonsNotUsedMessage();
+                return;
+            }
+
             _showClipper = true;
 
             // Keep current zoom/pan. (Hold SHIFT to refit.)
@@ -1294,6 +1859,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             RenderClipperBoundary();
         }
+
 
 
         // ------------------------------------------
@@ -1859,6 +2425,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // ------------------------------------------
         private void BtnPreClipperDispaly_Click(object sender, RoutedEventArgs e)
         {
+            if (HasAnyClosedWire())
+            {
+                ShowClosedWireButtonsNotUsedMessage();
+                return;
+            }
+
             _showClipper = true;
 
             // Keep current zoom/pan. (Hold SHIFT to refit.)
@@ -1870,6 +2442,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             RenderPreClipperBoundary();
         }
+
 
         // ------------------------------------------
         // Draw the INPUT polygons that will be fed to Clipper (before union)
@@ -1953,6 +2526,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // ------------------------------------------
         private void BtnCandigate_Click(object sender, RoutedEventArgs e)
         {
+            if (HasAnyClosedWire())
+            {
+                ShowClosedWireButtonsNotUsedMessage();
+                return;
+            }
+
             _showClipper = true;
 
             // Keep current zoom/pan. (Hold SHIFT to refit.)
@@ -1963,8 +2542,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
 
             RenderCandidateBoundary();
-
-
         }
 
 
@@ -3803,6 +4380,16 @@ namespace CNC_Improvements_gcode_solids.Utilities
         /// </summary>
         public string BuildClipperExportText(bool includeIslands = true)
         {
+            // Closed CL Wire mode uses a completely separate export format:
+            //  - INNER:  one OUTER loop (the closed wire)
+            //  - OUTER:  one OUTER loop (bounding box) + one ISLAND loop (the closed wire)
+            // It does NOT use the toolpath/clipper cleanup pipeline.
+            if (HasAnyClosedWire())
+            {
+                _lastClipperExportText = BuildClosedWireExportText();
+                return _lastClipperExportText;
+            }
+
             if (_segs == null || _segs.Count == 0)
             {
                 _lastClipperExportText = "";
@@ -3907,6 +4494,196 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
 
 
+        private string BuildClosedWireExportText()
+        {
+            if (_segs == null || _segs.Count == 0)
+                return "";
+
+            // ClosedWire export expects exactly one region (one closed wire).
+            // If the viewer somehow contains mixed regions, fail fast.
+            string regionName = _segs[0].RegionName ?? "";
+            for (int i = 0; i < _segs.Count; i++)
+            {
+                var s = _segs[i];
+                if (s == null) continue;
+
+                if (!s.IsClosedWire)
+                    throw new Exception("Closed CL Wire export called with GuidedTool segments present.");
+
+                if (!string.Equals(regionName, s.RegionName ?? "", StringComparison.Ordinal))
+                    throw new Exception("Closed CL Wire export supports a single MILL set at a time.");
+            }
+
+            bool inner = _segs[0].ClosedWireInner;
+            bool outer = _segs[0].ClosedWireOuter;
+
+            // Profile prim loop (must be a single closed chain)
+            if (!TryBuildClosedWirePrimLoop(_segs, out var profilePrims, out string failReason))
+            {
+                // Must not silently succeed
+                MessageBox.Show(
+                    $"MILL set \"{regionName}\": Closed CL Wire selected but loop is not closed.\n{failReason}\n\nThis path can only use GuidedTool.",
+                    "Closed CL Wire : Not Closed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return "";
+            }
+
+            var sb = new System.Text.StringBuilder(64 * 1024);
+
+            if (outer)
+            {
+                // OUTER = bounding box, ISLAND = profile loop
+                var boxPrims = BuildClosedWireBoundingBoxPrimLoop(_segs, padMm: 100.0);
+
+                sb.AppendLine("--- LOOP 0  OUTER ---");
+                AppendPythonFriendlyPrimsToSb(sb, boxPrims);
+                sb.AppendLine();
+
+                sb.AppendLine("--- LOOP 0  ISLAND ---");
+                AppendPythonFriendlyPrimsToSb(sb, profilePrims);
+                sb.AppendLine();
+            }
+            else
+            {
+                // INNER default (also used if neither inner/outer flagged): OUTER = profile only
+                sb.AppendLine("--- LOOP 0  OUTER ---");
+                AppendPythonFriendlyPrimsToSb(sb, profilePrims);
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
+
+
+        private bool TryBuildClosedWirePrimLoop(List<PathSeg> segs, out List<PyPrim> prims, out string failReason)
+        {
+            prims = new List<PyPrim>();
+            failReason = "";
+
+            if (segs == null || segs.Count == 0)
+            {
+                failReason = "Empty path.";
+                return false;
+            }
+
+            double curX = segs[0].X1;
+            double curY = segs[0].Y1;
+            double startX = curX;
+            double startY = curY;
+
+            for (int i = 0; i < segs.Count; i++)
+            {
+                var s = segs[i];
+
+                if (!WorldNear(curX, curY, s.X1, s.Y1, SNAP_TOL))
+                {
+                    failReason = $"Path is not a single chained wire (break at seg {s.Index}).";
+                    return false;
+                }
+
+                if (s.Type == "LINE")
+                {
+                    prims.Add(new PyPrim
+                    {
+                        Type = PyPrimType.Line,
+                        X1 = s.X1,
+                        Y1 = s.Y1,
+                        X2 = s.X2,
+                        Y2 = s.Y2
+                    });
+                }
+                else if (s.Type == "ARC3_CW" || s.Type == "ARC3_CCW")
+                {
+                    prims.Add(new PyPrim
+                    {
+                        Type = PyPrimType.Arc,
+                        X1 = s.X1,
+                        Y1 = s.Y1,
+                        Xm = s.Xm,
+                        Ym = s.Ym,
+                        X2 = s.X2,
+                        Y2 = s.Y2
+                    });
+                }
+                else
+                {
+                    failReason = $"Unsupported seg type: {s.Type} (seg {s.Index}).";
+                    return false;
+                }
+
+                curX = s.X2;
+                curY = s.Y2;
+            }
+
+            if (!WorldNear(curX, curY, startX, startY, SNAP_TOL))
+            {
+                failReason = "Loop not closed.";
+                return false;
+            }
+
+            return true;
+        }
+
+
+        private List<PyPrim> BuildClosedWireBoundingBoxPrimLoop(List<PathSeg> segs, double padMm)
+        {
+            // Use sampled boundary points for accurate bounds (arcs included)
+            if (!TryBuildWireDisplayPointsWorld(segs, requireClosedLoop: true, out var ptsWorld, out _))
+                ptsWorld = new List<Point>();
+
+            double minX = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity;
+            double minY = double.PositiveInfinity;
+            double maxY = double.NegativeInfinity;
+
+            if (ptsWorld.Count > 0)
+            {
+                for (int i = 0; i < ptsWorld.Count; i++)
+                {
+                    var p = ptsWorld[i];
+                    minX = Math.Min(minX, p.X);
+                    maxX = Math.Max(maxX, p.X);
+                    minY = Math.Min(minY, p.Y);
+                    maxY = Math.Max(maxY, p.Y);
+                }
+            }
+            else
+            {
+                // Fallback to endpoints only
+                for (int i = 0; i < segs.Count; i++)
+                {
+                    var s = segs[i];
+                    minX = Math.Min(minX, Math.Min(s.X1, s.X2));
+                    maxX = Math.Max(maxX, Math.Max(s.X1, s.X2));
+                    minY = Math.Min(minY, Math.Min(s.Y1, s.Y2));
+                    maxY = Math.Max(maxY, Math.Max(s.Y1, s.Y2));
+                }
+            }
+
+            if (!double.IsFinite(minX) || !double.IsFinite(maxX) || !double.IsFinite(minY) || !double.IsFinite(maxY))
+            {
+                minX = -1; maxX = 1; minY = -1; maxY = 1;
+            }
+
+            minX -= padMm;
+            maxX += padMm;
+            minY -= padMm;
+            maxY += padMm;
+
+            // Match the example ordering:
+            // (maxX,maxY)->(maxX,minY)->(minX,minY)->(minX,maxY)->(maxX,maxY)
+            var prims = new List<PyPrim>(4)
+            {
+                new PyPrim { Type = PyPrimType.Line, X1 = maxX, Y1 = maxY, X2 = maxX, Y2 = minY },
+                new PyPrim { Type = PyPrimType.Line, X1 = maxX, Y1 = minY, X2 = minX, Y2 = minY },
+                new PyPrim { Type = PyPrimType.Line, X1 = minX, Y1 = minY, X2 = minX, Y2 = maxY },
+                new PyPrim { Type = PyPrimType.Line, X1 = minX, Y1 = maxY, X2 = maxX, Y2 = maxY }
+            };
+
+            return prims;
+        }
+
 
 
 
@@ -3931,6 +4708,13 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
         private void BtnTrueShape_Click(object sender, RoutedEventArgs e)
         {
+            // Closed CL Wire mode: TrueShape / Clipper pipeline is not used.
+            if (HasAnyClosedWire())
+            {
+                ShowClosedWireButtonsNotUsedMessage();
+                return;
+            }
+
             if (_segs == null || _segs.Count == 0)
                 return;
 
@@ -4106,7 +4890,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // 7) Display: render EXACTLY from the Python-friendly primitives (no Fit/Reset)
             RenderPythonFriendlyPrimitiveLoops(outerPyLoops, islandPyLoops);
         }
-
 
 
 

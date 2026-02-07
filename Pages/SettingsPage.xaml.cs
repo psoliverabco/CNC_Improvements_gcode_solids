@@ -26,20 +26,22 @@ namespace CNC_Improvements_gcode_solids.Pages
             TxtClosingColor.Text = Properties.Settings.Default.ClosingColor ?? "#FF808080";
             TxtGraphicTextColor.Text = Properties.Settings.Default.GraphicTextColor ?? "#FFFBFF3D";
 
+            // NEW: CL (centreline) color
+            TxtCLColor.Text = Properties.Settings.Default.CLColor ?? "#FFFF00FF";
+
             // Widths
             TxtProfileWidth.Text = Properties.Settings.Default.ProfileWidth.ToString("0.#####", CultureInfo.InvariantCulture);
             TxtOffsetWidth.Text = Properties.Settings.Default.OffsetWidth.ToString("0.####", CultureInfo.InvariantCulture);
             TxtClosingWidth.Text = Properties.Settings.Default.ClosingWidth.ToString("0.#####", CultureInfo.InvariantCulture);
+
+            // NEW: CL width
+            TxtCLWidth.Text = Properties.Settings.Default.CLWidth.ToString("0.#####", CultureInfo.InvariantCulture);
 
             // Floats
             TxtTangentAngTol.Text = Properties.Settings.Default.TangentAngTol.ToString("0.#####", CultureInfo.InvariantCulture);
             TxtSmallSegment.Text = Properties.Settings.Default.SmallSegment.ToString("0.#####", CultureInfo.InvariantCulture);
 
             // NEW: Tolerances / thresholds
-            // Settings property names you provided:
-            //   ClipperInputPolyTol : double
-            //   MinArcPoints        : int
-            //   SnapRad             : double
             TxtClipperPolyTol.Text = Properties.Settings.Default.ClipperInputPolyTol.ToString("0.#####", CultureInfo.InvariantCulture);
             TxtMinArcPoints.Text = Properties.Settings.Default.MinArcPoints.ToString(CultureInfo.InvariantCulture);
             TxtSnapTol.Text = Properties.Settings.Default.SnapRad.ToString("0.#####", CultureInfo.InvariantCulture);
@@ -49,6 +51,7 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             UpdateColorPreviews();
         }
+
 
         private void BtnBrowseFreeCad_Click(object sender, RoutedEventArgs e)
         {
@@ -99,7 +102,11 @@ namespace CNC_Improvements_gcode_solids.Pages
             RectOffsetColor.Fill = SafeBrush(TxtOffsetColor.Text);
             RectClosingColor.Fill = SafeBrush(TxtClosingColor.Text);
             RectGraphicTextColor.Fill = SafeBrush(TxtGraphicTextColor.Text);
+
+            // NEW
+            RectCLColor.Fill = SafeBrush(TxtCLColor.Text);
         }
+
 
         private static System.Windows.Media.Brush SafeBrush(string hex)
         {
@@ -124,20 +131,27 @@ namespace CNC_Improvements_gcode_solids.Pages
                 ValidateColor(TxtClosingColor.Text, "ClosingColor");
                 ValidateColor(TxtGraphicTextColor.Text, "GraphicTextColor");
 
+                // NEW: CL color
+                ValidateColor(TxtCLColor.Text, "CLColor");
+
                 // Validate doubles (widths)
                 double profileWidth = ParseDoubleInv(TxtProfileWidth.Text, "ProfileWidth");
                 double offsetWidth = ParseDoubleInv(TxtOffsetWidth.Text, "OffsetWidth");
                 double closingWidth = ParseDoubleInv(TxtClosingWidth.Text, "ClosingWidth");
 
+                // NEW: CL width
+                double clWidth = ParseDoubleInv(TxtCLWidth.Text, "CLWidth");
+
                 if (profileWidth <= 0) throw new Exception("ProfileWidth must be > 0.");
                 if (offsetWidth <= 0) throw new Exception("OffsetWidth must be > 0.");
                 if (closingWidth <= 0) throw new Exception("ClosingWidth must be > 0.");
+                if (clWidth <= 0) throw new Exception("CLWidth must be > 0.");
 
                 // Validate floats
                 float tangentAngTol = ParseFloatInv(TxtTangentAngTol.Text, "TangentAngTol");
                 float smallSegment = ParseFloatInv(TxtSmallSegment.Text, "SmallSegment");
 
-                // NEW: Validate new fields
+                // Validate new fields
                 double clipperPolyTol = ParseDoubleInv(TxtClipperPolyTol.Text, "ClipperInputPolyTol");
                 int minArcPoints = ParseIntInv(TxtMinArcPoints.Text, "MinArcPoints");
                 double snapRad = ParseDoubleInv(TxtSnapTol.Text, "SnapRad");
@@ -154,14 +168,19 @@ namespace CNC_Improvements_gcode_solids.Pages
                 Properties.Settings.Default.ClosingColor = TxtClosingColor.Text.Trim();
                 Properties.Settings.Default.GraphicTextColor = TxtGraphicTextColor.Text.Trim();
 
+                // NEW
+                Properties.Settings.Default.CLColor = TxtCLColor.Text.Trim();
+
                 Properties.Settings.Default.ProfileWidth = profileWidth;
                 Properties.Settings.Default.OffsetWidth = offsetWidth;
                 Properties.Settings.Default.ClosingWidth = closingWidth;
 
+                // NEW
+                Properties.Settings.Default.CLWidth = clWidth;
+
                 Properties.Settings.Default.TangentAngTol = tangentAngTol;
                 Properties.Settings.Default.SmallSegment = smallSegment;
 
-                // NEW: store new settings
                 Properties.Settings.Default.ClipperInputPolyTol = clipperPolyTol;
                 Properties.Settings.Default.MinArcPoints = minArcPoints;
                 Properties.Settings.Default.SnapRad = snapRad;
@@ -177,6 +196,7 @@ namespace CNC_Improvements_gcode_solids.Pages
                 MessageBox.Show(ex.Message, "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         private static void ValidateColor(string s, string fieldName)
         {
