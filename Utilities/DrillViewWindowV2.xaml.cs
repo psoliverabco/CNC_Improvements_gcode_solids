@@ -47,14 +47,34 @@ namespace CNC_Improvements_gcode_solids.Utilities
         public sealed class HoleGroup
         {
             public string GroupName { get; set; } = "(unnamed)";
+
+            // Per-group drill params
             public double HoleDia { get; set; }
             public double ZHoleTop { get; set; }
             public double PointAngle { get; set; }
             public double ChamferLen { get; set; }
             public double ZPlusExt { get; set; }
             public double DrillZApex { get; set; }
+
+            // ------------------------------------------------------------
+            // viewer-only transform metadata (passed in from DrillPage)
+            // Convention: RotZ is CW-positive (same rule as Mill viewer)
+            // RotY only used if 180 => mirror X
+            // Tx/Ty/Tz are carried for logging/future (NOT applied in viewer)
+            // ------------------------------------------------------------
+            public string RegionName { get; set; } = "";
+            public string MatrixName { get; set; } = "";
+
+            public double RotZDeg { get; set; } = 0.0;
+            public double RotYDeg { get; set; } = 0.0;
+
+            public double Tx { get; set; } = 0.0;
+            public double Ty { get; set; } = 0.0;
+            public double Tz { get; set; } = 0.0;
+
             public List<(double X, double Y, int LineIndex)> Holes { get; set; } = new();
         }
+
 
         // ============================================================
         // Per-canvas zoom/pan container
@@ -238,25 +258,71 @@ namespace CNC_Improvements_gcode_solids.Utilities
         public DrillViewWindowV2(List<HoleGroup> groups)
         {
             InitializeComponent();
+
+            static double Norm360(double deg)
+            {
+                if (!double.IsFinite(deg))
+                    return 0.0;
+
+                deg %= 360.0;
+                if (deg < 0.0) deg += 360.0;
+                return deg;
+            }
+
+            static bool IsRotY180(double rotYDeg)
+            {
+                double a = Norm360(rotYDeg);
+                return Math.Abs(a - 180.0) < 1e-3;
+            }
+
+            static void TransformPoint2D(double x, double y, double rotZDegCw, bool mirrorX, out double xo, out double yo)
+            {
+                double rad = -rotZDegCw * (Math.PI / 180.0); // CW-positive
+                double c = Math.Cos(rad);
+                double s = Math.Sin(rad);
+
+                double xr = x * c - y * s;
+                double yr = x * s + y * c;
+
+                if (mirrorX)
+                    xr = -xr;
+
+                xo = xr;
+                yo = yr;
+            }
+
             int uid = 1;
+
             if (groups != null)
             {
                 int gi = 0;
+
                 foreach (var g in groups)
                 {
                     string gname = string.IsNullOrWhiteSpace(g.GroupName) ? $"Group {gi + 1}" : g.GroupName.Trim();
 
+                    // Per-group view transform (same rule as MillViewWindow display)
+                    double zRot = g?.RotZDeg ?? 0.0;
+                    double yRot = g?.RotYDeg ?? 0.0;
+                    bool mirrorX = IsRotY180(yRot);
+
                     int idx = 1;
+
                     foreach (var p in g.Holes)
                     {
+                        TransformPoint2D(p.X, p.Y, zRot, mirrorX, out double xt, out double yt);
+
                         _holes.Add(new HoleCenter
                         {
                             Uid = uid++,
 
                             Index = idx++,
                             LineIndex = p.LineIndex,
-                            X = p.X,
-                            Y = p.Y,
+
+                            // TRANSFORMED for display
+                            X = xt,
+                            Y = yt,
+
                             GroupName = gname,
                             GroupIndex = gi,
 
@@ -275,6 +341,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             InitViewer();
         }
+
 
         public DrillViewWindowV2(List<HoleCenter> holes)
         {

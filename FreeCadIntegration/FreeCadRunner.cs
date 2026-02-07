@@ -44,11 +44,12 @@ namespace CNC_Improvements_gcode_solids.FreeCadIntegration
                 FreeCadScript.HeadPY + Environment.NewLine +
                 // $"input_txt   = r\"{profilePath}\"" + Environment.NewLine +
                 $"output_step = r\"{stepPath}\"" + Environment.NewLine +
-
+                FreeCadScript.SewTolPY + Environment.NewLine +
                 Profile + Environment.NewLine +
                 FreeCadScript.BodyPY + Environment.NewLine +
                 FreeCadScript.TransPY + Environment.NewLine +
                 FreeCadScript.TailPy
+
 
                 ;
 

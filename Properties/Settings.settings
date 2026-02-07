@@ -50,5 +50,8 @@
     <Setting Name="CLWidth" Type="System.Double" Scope="User">
       <Value Profile="(Default)">2</Value>
     </Setting>
+    <Setting Name="SewTol" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">0.001</Value>
+    </Setting>
   </Settings>
 </SettingsFile>

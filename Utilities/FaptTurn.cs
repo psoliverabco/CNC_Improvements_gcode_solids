@@ -597,32 +597,30 @@ namespace CNC_Improvements_gcode_solids.Utilities
             return regions;
         }
 
-        
+
 
         internal static void ShowTextWindow(Window owner, string title, string text)
         {
-            var w = new Window
+            // Central diagnostics window used across the app.
+            // LogWindow.Show() already respects Settings.Default.LogWindowShow.
+            try
             {
-                Title = title,
-                Width = 1100,
-                Height = 700,
-                Owner = owner,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner
-            };
+                var w = new CNC_Improvements_gcode_solids.Utilities.LogWindow(title ?? "Log", text ?? "");
+                if (owner != null)
+                    w.Owner = owner;
 
-            w.Content = new TextBox
+                w.WindowStartupLocation = (owner != null)
+                    ? WindowStartupLocation.CenterOwner
+                    : WindowStartupLocation.CenterScreen;
+
+                w.Show(); // gated by Settings.Default.LogWindowShow inside LogWindow
+            }
+            catch
             {
-                Text = text ?? "",
-                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-                FontSize = 14,
-                IsReadOnly = true,
-                TextWrapping = TextWrapping.NoWrap,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
-
-            w.Show();
+                // Never crash the workflow because a log window failed to open.
+            }
         }
+
 
         private static bool Contains(string s, string needle)
         {

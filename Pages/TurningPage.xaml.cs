@@ -1337,6 +1337,11 @@ namespace CNC_Improvements_gcode_solids.Pages
                     out double tz,
                     out string matrixName);
 
+
+                // NEW: SewTol from app settings (will appear in the generated script)
+                double sewTol = CNC_Improvements_gcode_solids.Properties.Settings.Default.SewTol;
+
+
                 FreeCadScript.TransPY = $@"
 #{matrixName}
 TRANSFORM_ROTZ = {rotZDeg.ToString("0.###", inv)}
@@ -1397,6 +1402,9 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                     out double ty,
                     out double tz,
                     out string matrixName);
+
+                // NEW: SewTol from app settings (will appear in the generated script)
+                double sewTol = CNC_Improvements_gcode_solids.Properties.Settings.Default.SewTol;
 
                 FreeCadScript.TransPY = $@"
 #{matrixName}
@@ -1777,6 +1785,8 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 FreeCadScript.ProfilePth = txtPath;
                 FreeCadScript.StepPth = stepPath;
 
+               
+                
                 String Cr = @" 
                     ";
                 FreeCadScript.Profile = Cr;

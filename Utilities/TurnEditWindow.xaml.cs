@@ -53,6 +53,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private bool _forceFitOnNextRender = false;
 
 
+        
+
+
+
         // Adapter views so renderer does NOT depend on your EditSeg types directly.
         private sealed class LineView : TurnEditRender.IEditSegView
         {
@@ -146,8 +150,36 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private const string KEY_TxtZExt = "TxtZExt";
         private const string KEY_NRad = "NRad";
 
-        // Placeholder continuity tolerance (you requested 0.1 for now)
-        private const double CHAIN_TOL = 0.1;
+        // Single source of truth tolerance for ALL trim/chaining decisions.
+        // Editor should be stricter than FreeCAD sew tolerance.
+
+        private static double SewTol
+        {
+            get
+            {
+                double sew = Settings.Default.SewTol;
+                if (!TurnEditMath.IsFinite(sew) || sew <= 0.0) sew = 0.001;
+                double t = sew;
+                return (t < 1e-12) ? 1e-12 : t;
+            }
+        }
+
+        private static double EditTol
+        {
+            get
+            {
+                double sew = Settings.Default.SewTol;
+                if (!TurnEditMath.IsFinite(sew) || sew <= 0.0) sew = 0.001;
+                double t = sew * 0.5;
+                return (t < 1e-12) ? 1e-12 : t;
+            }
+        }
+
+
+
+
+       
+
 
         // Render tag so we can clear geometry only
         private const string TAG_GEOM = "GEOM";
@@ -642,13 +674,46 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (_editSegs == null || _editSegs.Count == 0)
                     throw new Exception("Nothing to save. Click Submit and build geometry first.");
 
-                if (!TryChainAndSnap(_editSegs, CHAIN_TOL, out List<EditSeg> ordered, out Point failWorld, out string failReason))
+                double sewTol = SewTol;
+                double editTol = EditTol;
+
+                int beforeCount = _editSegs.Count;
+
+                if (!TryChainAndSnap(_editSegs, editTol,
+                        out List<EditSeg> ordered,
+                        out double maxGap,
+                        out bool isClosed,
+                        out Point failWorld,
+                        out string failReason))
                 {
+                    ShowChainDiagnosticsIfEnabled(
+                        "Turn Editor: Chain Diagnostics (Save failed)",
+                        failReason,
+                        beforeCount,
+                        ordered?.Count ?? 0,
+                        sewTol,
+                        editTol,
+                        maxGap,
+                        false);
+
                     UpdateUiState("Shape not closed.");
                     DrawFailureStarAtWorldPoint(failWorld);
                     MessageBox.Show("Shape not closed.\n\n" + failReason, "Turn Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
+
+                ShowChainDiagnosticsIfEnabled(
+                    "Turn Editor: Chain Diagnostics (Save)",
+                    "Save",
+                    beforeCount,
+                    ordered.Count,
+                    sewTol,
+                    editTol,
+                    maxGap,
+                    isClosed);
+
+                // Replace the editor geometry with the deterministic chained result.
+                _editSegs = ordered;
 
                 // Export (NO tool comp). Use IK to remove R ambiguity.
                 List<string> newRegionLines = BuildRegionGcodeFromClosedLoop_IK(ordered);
@@ -711,12 +776,41 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 try { main.SelectedTurnSet = newSet; } catch { }
 
                 ShowLogWindowIfEnabled("Turn Editor: Saved Region (Generated)", marked, newName);
+
+                // Re-render with the stored chained geometry
+                RenderEditGeometry(_editSegs);
+                ApplySelectionVisuals();
+                DrawPickMarkers();
+
                 UpdateUiState($"Saved new TURN set '{newName}' ({marked.Count} line(s)).");
             }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message, "Turn Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void ShowChainDiagnosticsIfEnabled(string title, string context, int segCountBefore, int segCountAfter, double sewTol, double editTol, double maxEndpointGap, bool closed)
+        {
+            if (!Settings.Default.LogWindowShow) return;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== TURN EDIT: DIAGNOSTICS ===");
+            sb.AppendLine();
+            sb.AppendLine("Context: " + (context ?? ""));
+            sb.AppendLine($"SewTol  = {sewTol.ToString("0.########", CultureInfo.InvariantCulture)}");
+            sb.AppendLine($"EditTol = {editTol.ToString("0.########", CultureInfo.InvariantCulture)}");
+            sb.AppendLine();
+            sb.AppendLine($"Segments before = {segCountBefore}");
+            sb.AppendLine($"Segments after  = {segCountAfter}");
+            sb.AppendLine($"Max endpoint gap after chaining = {maxEndpointGap.ToString("0.########", CultureInfo.InvariantCulture)}");
+            sb.AppendLine($"Closed (editor) = {(closed ? "YES" : "NO")}");
+
+            var ownerW = this.Owner ?? Application.Current.MainWindow;
+            var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow(title, sb.ToString());
+            if (ownerW != null) logWindow.Owner = ownerW;
+            logWindow.Show();
+            logWindow.Activate();
         }
 
 
@@ -2020,13 +2114,17 @@ namespace CNC_Improvements_gcode_solids.Utilities
         }
 
         private bool TryChainAndSnap(
-            List<EditSeg> input,
-            double tol,
-            out List<EditSeg> ordered,
-            out Point failPointWorld,
-            out string failReason)
+    List<EditSeg> input,
+    double tol,
+    out List<EditSeg> ordered,
+    out double maxEndpointGap,
+    out bool isClosed,
+    out Point failPointWorld,
+    out string failReason)
         {
             ordered = new List<EditSeg>();
+            maxEndpointGap = 0.0;
+            isClosed = false;
             failPointWorld = new Point(double.NaN, double.NaN);
             failReason = "";
 
@@ -2047,6 +2145,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             Point start = first.Start;
             Point curEnd = first.End;
+
+            double maxGap = 0.0;
 
             while (remaining.Count > 0)
             {
@@ -2078,14 +2178,20 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (bestIdx < 0 || bestDist > tol)
                 {
                     failPointWorld = curEnd;
+                    maxEndpointGap = maxGap;
                     failReason = $"Chain break: no next endpoint found within tol={tol.ToString("0.###", CultureInfo.InvariantCulture)}.";
                     return false;
                 }
+
+                if (bestDist > maxGap)
+                    maxGap = bestDist;
 
                 var next = remaining[bestIdx];
                 remaining.RemoveAt(bestIdx);
 
                 if (bestReverse) next.ReverseInPlace();
+
+                // Snap continuity: force next start to current end
                 next.SetStart(curEnd);
 
                 ordered.Add(next);
@@ -2093,6 +2199,11 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
 
             double closeDist = Dist(curEnd, start);
+            if (closeDist > maxGap)
+                maxGap = closeDist;
+
+            maxEndpointGap = maxGap;
+
             if (closeDist > tol)
             {
                 failPointWorld = curEnd;
@@ -2101,8 +2212,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
 
             ordered[ordered.Count - 1].SetEnd(start);
+            isClosed = true;
             return true;
         }
+
 
         // ============================================================
         // Export: closed loop -> TURN G-code (IK, no tool comp)
@@ -2748,6 +2861,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     return;
                 }
 
+                int beforeCount = _editSegs.Count;
+                double sewTol = SewTol;
+                double editTol = EditTol;
+
                 TurnEditTrim.SegView MakeSegView(EditSeg s)
                 {
                     if (s is EditLineSeg ln)
@@ -2822,17 +2939,60 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 _pickA = null;
                 _pickB = null;
 
+                // Rebuild chain deterministically using EditTol.
+                bool chainedOk = TryChainAndSnap(_editSegs, editTol,
+                    out List<EditSeg> ordered,
+                    out double maxGap,
+                    out bool isClosed,
+                    out Point failWorld,
+                    out string failReason);
+
+                if (chainedOk)
+                {
+                    _editSegs = ordered;
+
+                    RenderEditGeometry(_editSegs);
+                    ApplySelectionVisuals();
+                    DrawPickMarkers();
+
+                    ShowChainDiagnosticsIfEnabled(
+                        "Turn Editor: Chain Diagnostics (Trim)",
+                        "Trim",
+                        beforeCount,
+                        _editSegs.Count,
+                        sewTol,
+                        editTol,
+                        maxGap,
+                        isClosed);
+
+                    UpdateUiState("Trim: applied + re-chained.");
+                    return;
+                }
+
+                // Trim applied, but chain failed: render current geometry and show diagnostics.
                 RenderEditGeometry(_editSegs);
                 ApplySelectionVisuals();
                 DrawPickMarkers();
+                DrawFailureStarAtWorldPoint(failWorld);
 
-                UpdateUiState("Trim: applied.");
+                ShowChainDiagnosticsIfEnabled(
+                    "Turn Editor: Chain Diagnostics (Trim failed)",
+                    failReason,
+                    beforeCount,
+                    _editSegs.Count,
+                    sewTol,
+                    editTol,
+                    maxGap,
+                    false);
+
+                UpdateUiState("Trim: applied but chain failed (see diagnostics).");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Turn Editor - Trim", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Turn Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         private sealed class TrimHost : TurnEditTrim.IHostPolyline
         {

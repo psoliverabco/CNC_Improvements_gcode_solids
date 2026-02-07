@@ -1367,46 +1367,26 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 SyncGcodeLinesFromEditor();
 
                 var set = GetSelectedDrillSetSafe();
-                if (set != null)
-                {
-                    if (!TryBuildHoleGroupFromSet(set, GcodeLines, out DrillViewWindowV2.HoleGroup? grp, out string why))
-                        throw new Exception(why);
-
-                    var holes = new List<DrillViewWindow.HoleCenter>();
-                    for (int i = 0; i < grp!.Holes.Count; i++)
-                    {
-                        var h = grp.Holes[i];
-                        holes.Add(new DrillViewWindow.HoleCenter
-                        {
-                            Index = i + 1,
-                            LineIndex = h.LineIndex,
-                            X = h.X,
-                            Y = h.Y
-                        });
-                    }
-
-                    var win = new DrillViewWindow(
-                        holeDia: grp.HoleDia,
-                        zHoleTop: grp.ZHoleTop,
-                        pointAngle: grp.PointAngle,
-                        chamferLen: grp.ChamferLen,
-                        zPlusExt: grp.ZPlusExt,
-                        drillZApex: grp.DrillZApex,
-                        holes: holes);
-
-                    var owner = Window.GetWindow(this);
-                    if (owner != null)
-                        win.Owner = owner;
-
-                    win.Show();
+                if (set == null)
                     return;
-                }
+
+                if (!TryBuildHoleGroupFromSet(set, GcodeLines, out DrillViewWindowV2.HoleGroup? grp, out string why))
+                    throw new Exception(why);
+
+                var win = new DrillViewWindowV2(new List<DrillViewWindowV2.HoleGroup> { grp! });
+
+                var owner = Window.GetWindow(this);
+                if (owner != null)
+                    win.Owner = owner;
+
+                win.Show();
             }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message, "Drill Viewer", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         private void BtnViewAllDrilling_Click(object sender, RoutedEventArgs e)
         {
@@ -1694,6 +1674,34 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 return false;
             }
 
+            Main.TryGetTransformForRegion(
+    set.Name,
+    out double rotYDeg,
+    out double rotZDeg,
+    out double tx,
+    out double ty,
+    out double tz,
+    out string matrixName);
+
+            // Ignore RotY unless it is exactly 180 (within tolerance)
+            static double Norm360(double deg)
+            {
+                if (!double.IsFinite(deg))
+                    return 0.0;
+
+                deg %= 360.0;
+                if (deg < 0.0) deg += 360.0;
+                return deg;
+            }
+
+            static bool IsRotY180(double deg)
+            {
+                double a = Norm360(deg);
+                return Math.Abs(a - 180.0) < 1e-3;
+            }
+
+            double rotYForView = IsRotY180(rotYDeg) ? 180.0 : 0.0;
+
             group = new DrillViewWindowV2.HoleGroup
             {
                 GroupName = string.IsNullOrWhiteSpace(set.Name) ? "(unnamed)" : set.Name.Trim(),
@@ -1703,8 +1711,26 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 ChamferLen = chamferLen,
                 ZPlusExt = zPlusExt,
                 DrillZApex = drillZApex,
-                Holes = holes
+                Holes = holes,
+
+                // Matrix metadata for viewer display transform
+                RegionName = set.Name ?? "",
+                MatrixName = matrixName ?? "",
+                RotZDeg = rotZDeg,
+
+                // IMPORTANT: RotY ignored unless 180
+                RotYDeg = rotYForView,
+
+                Tx = tx,
+                Ty = ty,
+                Tz = tz
             };
+
+            return true;
+
+
+            return true;
+
 
             return true;
         }

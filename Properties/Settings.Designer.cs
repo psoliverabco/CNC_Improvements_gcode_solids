@@ -214,5 +214,17 @@ namespace CNC_Improvements_gcode_solids.Properties {
                 this["CLWidth"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0.001")]
+        public double SewTol {
+            get {
+                return ((double)(this["SewTol"]));
+            }
+            set {
+                this["SewTol"] = value;
+            }
+        }
     }
 }

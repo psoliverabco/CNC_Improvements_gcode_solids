@@ -4615,7 +4615,7 @@ namespace CNC_Improvements_gcode_solids
             // MILL regions: (G106....) .. (G1206)
             var millRegions = CNC_Improvements_gcode_solids.Utilities.FaptMill.BuildFaptMillRegions(lines);
 
-
+            int millAlphaCounter = 0;
 
             // If regions exist but NONE have an appended name after the header ')', show a clear message.
             bool HasAppendedName(List<string> region)
@@ -4856,7 +4856,7 @@ namespace CNC_Improvements_gcode_solids
                     // MILL translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptMill.TranslateFaptRegionToMillGcode(regions[idx]);
                     string strippedBaseName = "";
-                    int millAlphaCounter = 0;
+                   
                     // If the MILL FAPT header contains inline transform tokens, we must run ResolveTrans
                     // on the GENERATED MILL GCODE (rawGcode), NOT on the FAPT text and NOT by searching editor text.
                     bool hasTransformTokens =

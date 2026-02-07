@@ -46,11 +46,15 @@ namespace CNC_Improvements_gcode_solids.Pages
             TxtMinArcPoints.Text = Properties.Settings.Default.MinArcPoints.ToString(CultureInfo.InvariantCulture);
             TxtSnapTol.Text = Properties.Settings.Default.SnapRad.ToString("0.#####", CultureInfo.InvariantCulture);
 
+            // NEW: Sew tolerance (FreeCAD sewing / closure tol)
+            TxtSewTol.Text = Properties.Settings.Default.SewTol.ToString("0.#####", CultureInfo.InvariantCulture);
+
             // Bool
             ChkLogWindowShow.IsChecked = Properties.Settings.Default.LogWindowShow;
 
             UpdateColorPreviews();
         }
+
 
 
         private void BtnBrowseFreeCad_Click(object sender, RoutedEventArgs e)
@@ -156,9 +160,13 @@ namespace CNC_Improvements_gcode_solids.Pages
                 int minArcPoints = ParseIntInv(TxtMinArcPoints.Text, "MinArcPoints");
                 double snapRad = ParseDoubleInv(TxtSnapTol.Text, "SnapRad");
 
+                // NEW: Sew tolerance
+                double sewTol = ParseDoubleInv(TxtSewTol.Text, "SewTol");
+
                 if (clipperPolyTol <= 0) throw new Exception("ClipperInputPolyTol must be > 0.");
                 if (minArcPoints < 3) throw new Exception("MinArcPoints must be >= 3.");
                 if (snapRad <= 0) throw new Exception("SnapRad must be > 0.");
+                if (sewTol <= 0) throw new Exception("SewTol must be > 0.");
 
                 // Save values
                 Properties.Settings.Default.FreeCadPath = TxtFreeCadPath.Text ?? string.Empty;
@@ -185,6 +193,9 @@ namespace CNC_Improvements_gcode_solids.Pages
                 Properties.Settings.Default.MinArcPoints = minArcPoints;
                 Properties.Settings.Default.SnapRad = snapRad;
 
+                // NEW
+                Properties.Settings.Default.SewTol = sewTol;
+
                 Properties.Settings.Default.LogWindowShow = (ChkLogWindowShow.IsChecked == true);
 
                 Properties.Settings.Default.Save();
@@ -196,6 +207,7 @@ namespace CNC_Improvements_gcode_solids.Pages
                 MessageBox.Show(ex.Message, "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
         private static void ValidateColor(string s, string fieldName)

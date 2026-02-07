@@ -1,4 +1,5 @@
 ﻿// File: Utilities/TurnEditHelpers/TurnEditTrim.cs
+using CNC_Improvements_gcode_solids.Properties;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -25,6 +26,23 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
     internal static class TurnEditTrim
     {
         // ---------------- Host contracts ----------------
+
+
+        // Single source of truth tolerance for ALL trim geometry decisions.
+        // Turn editor should be stricter than FreeCAD sew tolerance.
+        private static double EditTol
+        {
+            get
+            {
+                double sew = Settings.Default.SewTol;
+                if (!TurnEditMath.IsFinite(sew) || sew <= 0.0) sew = 0.001;
+                double t = sew * 0.5;
+                return (t < 1e-12) ? 1e-12 : t;
+            }
+        }
+
+
+
 
         internal interface IHost
         {
@@ -189,14 +207,16 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             Point A = seg.A;
             Point B = seg.B;
 
-            const double COL_TOL = 1e-7;
-            const double BETWEEN_TOL = 1e-9;
+            double tol = EditTol;
+            double colTol = tol;
+            double betweenTol = tol / 100.0; // allow interior classification without endpoint flapping
+            if (betweenTol < 1e-12) betweenTol = 1e-12;
 
             for (int i = 0; i < ips.Count; i++)
             {
                 Point ip = ips[i];
 
-                bool onSegmentInterior = IsPointOnSegmentInterior(A, B, ip, COL_TOL, BETWEEN_TOL);
+                bool onSegmentInterior = IsPointOnSegmentInterior(A, B, ip, colTol, betweenTol);
 
                 if (onSegmentInterior)
                 {
@@ -217,7 +237,6 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 }
 
                 // Extend/trim: prefer picked end, but also include the swapped end if it is "in front"
-                // (This keeps the tool usable without extra UI buttons.)
                 bool pickedMoveStart = aPick.PickStart;
 
                 // Outcome 1: move picked end
@@ -226,7 +245,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     Point fixedEnd = moveStart ? B : A;
                     Point movingEnd = moveStart ? A : B;
 
-                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, 1e-9))
+                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, tol))
                     {
                         Point p0 = moveStart ? ip : A;
                         Point p1 = moveStart ? B : ip;
@@ -245,7 +264,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     Point fixedEnd = moveStart ? B : A;
                     Point movingEnd = moveStart ? A : B;
 
-                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, 1e-9))
+                    if (IsOnRay_FromFixedThroughMoving(ip, fixedEnd, movingEnd, tol))
                     {
                         Point p0 = moveStart ? ip : A;
                         Point p1 = moveStart ? B : ip;
@@ -260,14 +279,12 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             }
 
             // de-dup identical outcomes (can happen if IP equals endpoint, etc.)
-            outOpts = DedupOptions(outOpts, 1e-9);
-            // write back
-            // (caller passed list; we must mutate it, not reassign)
-            // so: clear + add
+            outOpts = DedupOptions(outOpts, tol);
             var copy = outOpts.ToList();
             outOpts.Clear();
             outOpts.AddRange(copy);
         }
+
 
         private static TrimOption MakeLineOption(string label, Point ip, Point p0, Point p1)
         {
@@ -296,10 +313,6 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
         {
             var seg = aPick.Seg;
 
-            // Normalize A arc to CW internally (as you requested earlier).
-            // BUT: per your latest instruction, we DO NOT track original endpoints meaning;
-            // we output CW arc and the editor list can accept whatever direction ordering.
-            // For safety, we still normalize so radius/center are consistent.
             SegView arc = NormalizeArcToCW(seg);
 
             Point origA = arc.A;
@@ -307,23 +320,23 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             Point C = arc.C;
             double r = arc.Radius;
 
-            if (r < 1e-9)
+            if (r < 1e-12)
                 return;
 
-            const double ONCIRC_TOL = 1e-4;
+            double tol = EditTol;
+            double onCircTol = tol;
             const int PREVIEW_SAMPLES = 72;
 
             for (int i = 0; i < ips.Count; i++)
             {
                 Point ip = ips[i];
 
-                // must be on circle (loose)
+                // must be on circle
                 double dR = Math.Abs(TurnEditMath.Dist(ip, C) - r);
-                if (dR > ONCIRC_TOL)
+                if (dR > onCircTol)
                     continue;
 
-                // Two fixed-end choices (use BOTH; user wants open mode):
-                // fixed = origA, or fixed = origB
+                // Two fixed-end choices
                 Point[] fixedEnds = new[] { origA, origB };
 
                 for (int fe = 0; fe < fixedEnds.Length; fe++)
@@ -331,7 +344,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     Point fixedEnd = fixedEnds[fe];
 
                     // skip degenerate: ip == fixedEnd
-                    if (TurnEditMath.Dist(ip, fixedEnd) < 1e-9)
+                    if (TurnEditMath.Dist(ip, fixedEnd) <= tol)
                         continue;
 
                     // Branch 1: endpoints (fixed -> ip) as CW
@@ -348,14 +361,12 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                             samples: PREVIEW_SAMPLES,
                             out TrimOption opt))
                         {
-                            // label short/long based on CW sweep
                             opt.Label = $"{opt.Label} | {ClassifyShortLongCW(start, end, C)}";
                             outOpts.Add(opt);
                         }
                     }
 
                     // Branch 2: endpoints (ip -> fixed) as CW
-                    // This represents the other geometric branch between the same two points.
                     {
                         Point start = ip;
                         Point end = fixedEnd;
@@ -377,11 +388,12 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             }
 
             // Dedup identical outcomes
-            outOpts = DedupOptions(outOpts, 1e-8);
+            outOpts = DedupOptions(outOpts, tol);
             var copy = outOpts.ToList();
             outOpts.Clear();
             outOpts.AddRange(copy);
         }
+
 
         private static SegView NormalizeArcToCW(SegView s)
         {
@@ -606,6 +618,8 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
         {
             if (options == null || options.Count == 0) return 0;
 
+            double tol = EditTol;
+
             // For lines, try to prefer the outcome that keeps the opposite end fixed and moves the picked end.
             if (aPick?.Seg?.Kind == SegKind.Line)
             {
@@ -616,16 +630,15 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 for (int i = 0; i < options.Count; i++)
                 {
                     var o = options[i];
-                    // heuristic: if picked start, prefer options whose PrevA is not original A (i.e. moved start)
-                    // if picked end, prefer options whose PrevB is not original B (i.e. moved end)
+
                     if (pickStart)
                     {
-                        if (TurnEditMath.Dist(o.PrevA, A) > 1e-9 && TurnEditMath.Dist(o.PrevB, B) < 1e-6)
+                        if (TurnEditMath.Dist(o.PrevA, A) > tol && TurnEditMath.Dist(o.PrevB, B) <= tol)
                             return i;
                     }
                     else
                     {
-                        if (TurnEditMath.Dist(o.PrevB, B) > 1e-9 && TurnEditMath.Dist(o.PrevA, A) < 1e-6)
+                        if (TurnEditMath.Dist(o.PrevB, B) > tol && TurnEditMath.Dist(o.PrevA, A) <= tol)
                             return i;
                     }
                 }
@@ -634,24 +647,25 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             return 0;
         }
 
+
         private static void RenderOutcomePreview(IHost host, TrimOption opt, List<TrimOption> allOptions)
         {
             host.ClearPreviewOnly();
 
-            // Draw faint IP markers for all outcomes (helps user see there are multiple IPs / branches)
+            double tol = EditTol;
+
             const double FAINT_OP = 0.35;
             const double HI_OP = 1.0;
             const double D_FAINT = 6.0;
             const double D_HI = 11.0;
 
-            // Group by IP (dedup-ish) to avoid too many dots
             var ips = new List<Point>();
             foreach (var o in allOptions)
-                AddUnique(ips, o.IP, 1e-6);
+                AddUnique(ips, o.IP, tol);
 
             for (int i = 0; i < ips.Count; i++)
             {
-                bool hi = TurnEditMath.Dist(ips[i], opt.IP) <= 1e-6;
+                bool hi = TurnEditMath.Dist(ips[i], opt.IP) <= tol;
 
                 host.DrawPreviewPointWorld(
                     ips[i],
@@ -660,12 +674,9 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     hi ? HI_OP : FAINT_OP);
             }
 
-            // Draw endpoints (small)
             host.DrawPreviewPointWorld(opt.PrevA, Brushes.Orange, 7.0, 0.95);
             host.DrawPreviewPointWorld(opt.PrevB, Brushes.Orange, 7.0, 0.95);
 
-            // Draw the outcome geometry if supported
-            // Draw the outcome geometry if supported
             if (host is IHostPolyline hp && opt.PreviewWorld != null && opt.PreviewWorld.Count >= 2)
             {
                 bool isArc = opt.ReplacementLine != null &&
@@ -677,8 +688,8 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                     isArc ? 3.2 : 2.4,
                     1.0);
             }
-
         }
+
 
         private static void AddUnique(List<Point> pts, Point p, double tol)
         {
@@ -698,6 +709,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
 
         private static List<Point> BuildIntersectionCandidates_Infinite(SegView a, SegView b)
         {
+            double tol = EditTol;
             var outPts = new List<Point>();
 
             if (a.Kind == SegKind.Line && b.Kind == SegKind.Line)
@@ -705,7 +717,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 if (TurnEditMath.TryIntersectInfiniteLines(a.A, a.B, b.A, b.B, out Point ip))
                     outPts.Add(ip);
 
-                return DedupPoints(outPts, 1e-7);
+                return DedupPoints(outPts, tol);
             }
 
             if (a.Kind == SegKind.Line && b.Kind == SegKind.Arc)
@@ -714,7 +726,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 if (rb > 1e-9)
                     outPts.AddRange(TurnEditMath.IntersectLineCircle_Infinite(a.A, a.B, b.C, rb));
 
-                return DedupPoints(outPts, 1e-7);
+                return DedupPoints(outPts, tol);
             }
 
             if (a.Kind == SegKind.Arc && b.Kind == SegKind.Line)
@@ -723,7 +735,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 if (ra > 1e-9)
                     outPts.AddRange(TurnEditMath.IntersectLineCircle_Infinite(b.A, b.B, a.C, ra));
 
-                return DedupPoints(outPts, 1e-7);
+                return DedupPoints(outPts, tol);
             }
 
             if (a.Kind == SegKind.Arc && b.Kind == SegKind.Arc)
@@ -734,11 +746,12 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 if (ra > 1e-9 && rb > 1e-9)
                     outPts.AddRange(TurnEditMath.IntersectCircleCircle(a.C, ra, b.C, rb));
 
-                return DedupPoints(outPts, 1e-7);
+                return DedupPoints(outPts, tol);
             }
 
             return outPts;
         }
+
 
         private static List<Point> DedupPoints(List<Point> pts, double tol)
         {
