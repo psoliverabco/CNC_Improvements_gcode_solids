@@ -8,6 +8,8 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using CNC_Improvements_gcode_solids.Utilities;
+
 
 namespace CNC_Improvements_gcode_solids.Pages
 {
@@ -768,11 +770,15 @@ namespace CNC_Improvements_gcode_solids.Pages
         // ------------------------------------------------------------
         private static string NormalizeLineForMatch(string? s)
         {
-            if (s == null) return "";
-            string t = s.Trim();
-            t = Regex.Replace(t, @"\s+", " ");
-            return t;
+            // MUST match the SAME normalization used by the Region builders/search:
+            // - strips optional "1234:" prefix
+            // - strips leading "#...#" anchor block
+            // - removes ALL whitespace
+            // - uppercases invariant
+            // - keeps the unique end-tag intact
+            return GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(s ?? "");
         }
+
 
         private static int FindIndexByMarkerText(List<string> lines, string markerText)
         {

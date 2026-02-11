@@ -15,6 +15,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace CNC_Improvements_gcode_solids.Pages
 {
@@ -622,6 +623,8 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (GcodeEditor == null || GcodeLines == null)
                 return;
 
+            UiUtilities.ForceLinesUppercaseInPlace(GcodeLines);
+
             var rtb = GcodeEditor;
             rtb.Document.Blocks.Clear();
 
@@ -1140,8 +1143,8 @@ namespace CNC_Improvements_gcode_solids.Pages
                 var inv = CultureInfo.InvariantCulture;
 
                 string safe = MainWindow.SanitizeFileStem(set.Name);
-                string txtPath = Path.Combine(exportDir, $"{safe}_holes.txt");
-                string stepPath = Path.Combine(exportDir, $"{safe}_Holes_stp.stp");
+                string txtPath = System.IO.Path.Combine(exportDir, $"{safe}_holes.txt");
+                string stepPath = System.IO.Path.Combine(exportDir, $"{safe}_Holes_stp.stp");
 
                 var rawTxtLines = new List<string>
                 {
@@ -1273,8 +1276,8 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
                 Directory.CreateDirectory(exportDir);
 
-                string txtPath = Path.Combine(exportDir, fileStem + "_holes.txt");
-                string stepPath = Path.Combine(exportDir, fileStem + "_Holes_stp.stp");
+                string txtPath = System.IO.Path.Combine(exportDir, fileStem + "_holes.txt");
+                string stepPath = System.IO.Path.Combine(exportDir, fileStem + "_Holes_stp.stp");
 
                 var rawTxtLines = new List<string>
                 {

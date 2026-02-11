@@ -20,6 +20,8 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Threading;
+using System.Windows.Input;   // KeyEventArgs, Key, Keyboard, ModifierKeys
+using System.Globalization;    // if not already present (for CultureInfo)
 
 
 
@@ -46,6 +48,7 @@ namespace CNC_Improvements_gcode_solids
         public bool AllowScrollToRegionStart = false;
 
 
+       
 
         private void SetProjectNameFromProjectFilePath(string projectFilePath)
         {
@@ -270,29 +273,26 @@ namespace CNC_Improvements_gcode_solids
             OnPropertyChanged(nameof(SelectedSetLabel));
         }
 
+       
 
+        
 
-        private void TxtGcode_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+        private static char? KeyToCharLetterOnly(Key key)
         {
+            // Handle A..Z
+            if (key >= Key.A && key <= Key.Z)
+            {
+                int offset = (int)key - (int)Key.A;
+                return (char)('a' + offset);
+            }
 
-            Debug.WriteLine("TxtGcode_PreviewTextInput");
-
-
-
-            if (string.IsNullOrEmpty(e.Text))
-                return;
-
-            string up = e.Text.ToUpperInvariant();
-            if (up == e.Text)
-                return;
-
-            // Replace typed text with uppercase
-            e.Handled = true;
-
-            var rtb = (RichTextBox)sender;
-            rtb.CaretPosition.InsertTextInRun(up);
-            rtb.CaretPosition = rtb.CaretPosition.GetPositionAtOffset(up.Length) ?? rtb.CaretPosition;
+            // Numpad/other keys ignored (we only force letters)
+            return null;
         }
+
+
+        
+
 
         private void TxtGcode_Pasting(object sender, DataObjectPastingEventArgs e)
         {
@@ -4624,21 +4624,30 @@ namespace CNC_Improvements_gcode_solids
             // MILL regions: (G106....) .. (G1206)
             var millRegions = CNC_Improvements_gcode_solids.Utilities.FaptMill.BuildFaptMillRegions(lines);
 
+            // DRILL regions: named (G121x...) pattern lines with modal (G1000...) above
+            var drillRegions = CNC_Improvements_gcode_solids.Utilities.FaptDrill.BuildFaptDrillRegions(lines);
+
             int millAlphaCounter = 0;
 
             // If regions exist but NONE have an appended name after the header ')', show a clear message.
             bool HasAppendedName(List<string> region)
             {
                 if (region == null || region.Count == 0) return false;
-                string first = region[0] ?? "";
-                string nm = CNC_Improvements_gcode_solids.Utilities.FaptTurn.ExtractFaptRegionName(first);
-                return !string.IsNullOrWhiteSpace(nm);
+                for (int i = 0; i < region.Count && i < 2; i++)
+                {
+                    string s = region[i] ?? "";
+                    string nm = CNC_Improvements_gcode_solids.Utilities.FaptTurn.ExtractFaptRegionName(s);
+                    if (!string.IsNullOrWhiteSpace(nm))
+                        return true;
+                }
+                return false;
             }
 
-            int totalFound = (turnRegions?.Count ?? 0) + (millRegions?.Count ?? 0);
+            int totalFound = (turnRegions?.Count ?? 0) + (millRegions?.Count ?? 0) + (drillRegions?.Count ?? 0);
             bool anyNamed =
                 (turnRegions != null && turnRegions.Any(r => HasAppendedName(r))) ||
-                (millRegions != null && millRegions.Any(r => HasAppendedName(r)));
+                (millRegions != null && millRegions.Any(r => HasAppendedName(r))) ||
+                (drillRegions != null && drillRegions.Any(r => HasAppendedName(r)));
 
             if (totalFound > 0 && !anyNamed)
             {
@@ -4646,7 +4655,8 @@ namespace CNC_Improvements_gcode_solids
                     "FAPT regions found, but no names were appended after the header ')'.\n\n" +
                     "Example required format:\n" +
                     "(G112........)RegionName\n" +
-                    "(G1062........)RegionName\n\n" +
+                    "(G1062........)RegionName\n" +
+                    "(G1216........)DrillPatternName\n\n" +
                     "Tip: the name must be AFTER the first ')' and BEFORE any '(u:....)' tag.",
                     "FAPT",
                     MessageBoxButton.OK,
@@ -4655,12 +4665,9 @@ namespace CNC_Improvements_gcode_solids
                 return;
             }
 
-
-
-
             // Combine for selection dialog
             var regions = new List<List<string>>();
-            var regionType = new List<string>(); // "TURN" or "MILL"
+            var regionType = new List<string>(); // "TURN" / "MILL" / "DRILL"
 
             foreach (var r in turnRegions)
             {
@@ -4672,10 +4679,15 @@ namespace CNC_Improvements_gcode_solids
                 regions.Add(r);
                 regionType.Add("MILL");
             }
+            foreach (var r in drillRegions)
+            {
+                regions.Add(r);
+                regionType.Add("DRILL");
+            }
 
             if (regions.Count == 0)
             {
-                MessageBox.Show("No FAPT regions found (no '(G112' TURN or '(G1062' MILL regions).", "FAPT",
+                MessageBox.Show("No FAPT regions found (no '(G112' TURN or '(G1062' MILL or named '(G121' DRILL patterns).", "FAPT",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -4734,7 +4746,6 @@ namespace CNC_Improvements_gcode_solids
                     }
                 }
 
-
                 // first X/Y occurrence for starts
                 for (int i = 0; i < rawGcode.Count; i++)
                 {
@@ -4777,9 +4788,13 @@ namespace CNC_Improvements_gcode_solids
                 string type = (idx >= 0 && idx < regionType.Count) ? regionType[idx] : "TURN";
 
                 string firstLine = (regions[idx].Count > 0) ? regions[idx][0] : "";
-                string name = CNC_Improvements_gcode_solids.Utilities.FaptTurn.ExtractFaptRegionName(firstLine);
+                string nameLine = firstLine;
+                if (type == "DRILL" && regions[idx].Count > 1)
+                    nameLine = regions[idx][1] ?? "";
+
+                string name = CNC_Improvements_gcode_solids.Utilities.FaptTurn.ExtractFaptRegionName(nameLine);
                 if (string.IsNullOrWhiteSpace(name))
-                    name = (type == "MILL") ? "FAPT_MILL" : "FAPT_TURN";
+                    name = (type == "MILL") ? "FAPT_MILL" : (type == "DRILL") ? "FAPT_DRILL" : "FAPT_TURN";
 
                 // alpha tag: region 1 => a, region 2 => b, ...
                 char alpha = CNC_Improvements_gcode_solids.Utilities.FaptTurn.IndexToAlpha(s);
@@ -4843,6 +4858,9 @@ namespace CNC_Improvements_gcode_solids
                             snapshotDefaults: null
                         );
 
+                        rs.ExportEnabled = false;
+                        rs.ShowInViewAll = true;
+
                         // Step 5: build RTB insert from the *stored* region lines
                         var insert = new List<string>();
                         insert.Add("(" + name + " ST)");
@@ -4860,12 +4878,149 @@ namespace CNC_Improvements_gcode_solids
                         blocksToAppend.Add("");
                     }
                 }
+                else if (type == "DRILL")
+                {
+                    // DRILL translator: modal (G1000...) + named pattern (G121x...) => (D Z.. / T Z.. / points)
+                    if (!CNC_Improvements_gcode_solids.Utilities.FaptDrill.TryConvertRegionToDrillPattern(
+                        regions[idx],
+                        out CNC_Improvements_gcode_solids.Utilities.FaptDrill.DrillPattern pat,
+                        out string drillErr))
+                    {
+                        sb.AppendLine("----- DRILL CONVERSION ERROR -----");
+                        sb.AppendLine(drillErr);
+                        sb.AppendLine("");
+                        continue;
+                    }
+
+                    // Build raw DRILL region lines (no tags yet)
+                    var rawDrill = new List<string>();
+                    rawDrill.Add("D Z" + pat.ZDepth.ToString("0.0", CultureInfo.InvariantCulture));
+                    rawDrill.Add("T Z" + pat.ZHoleTop.ToString("0.0", CultureInfo.InvariantCulture));
+                    for (int p = 0; p < pat.Points.Count; p++)
+                    {
+                        var pt = pat.Points[p];
+                        string xs = pt.X.ToString("0.###", CultureInfo.InvariantCulture);
+                        string ys = pt.Y.ToString("0.###", CultureInfo.InvariantCulture);
+                        rawDrill.Add(" X" + xs + "Y" + ys);
+                    }
+
+                    // Step 2: add unique endtag with NO spaces (d:<alpha><0000>)
+                    var taggedNoSpace = new List<string>();
+                    int n = 0;
+                    for (int i = 0; i < rawDrill.Count; i++)
+                    {
+                        string gl = (rawDrill[i] ?? "").TrimEnd();
+                        if (string.IsNullOrWhiteSpace(gl))
+                            continue;
+
+                        string tag = "(d:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
+                        taggedNoSpace.Add(gl + tag); // NO space
+                        n++;
+                    }
+
+                    sb.AppendLine("----- GENERATED DRILL REGION (tagged, no-space) -----");
+                    sb.AppendLine("Name: " + pat.Name);
+                    foreach (var gl in taggedNoSpace)
+                        sb.AppendLine(gl);
+                    sb.AppendLine("");
+
+                    // Step 3/4: create/edit via builder
+                    CNC_Improvements_gcode_solids.SetManagement.RegionSet FindDrillSetByName(string nm)
+                    {
+                        if (DrillSets == null) return null;
+                        for (int i = 0; i < DrillSets.Count; i++)
+                        {
+                            var rs0 = DrillSets[i];
+                            if (rs0 == null) continue;
+                            string rn = (rs0.Name ?? "").Trim();
+                            if (string.Equals(rn, nm, StringComparison.OrdinalIgnoreCase))
+                                return rs0;
+                        }
+                        return null;
+                    }
+
+                    var existing = FindDrillSetByName(pat.Name);
+                    CNC_Improvements_gcode_solids.SetManagement.RegionSet rs;
+
+                    if (existing == null)
+                    {
+                        rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.Create(
+                            regionName: pat.Name,
+                            regionLines: taggedNoSpace,
+                            drillDepthIndex: 0,
+                            coordMode: "Cartesian",
+                            txtChamfer: "1",
+                            txtHoleDia: "",
+                            txtPointAngle: "118",
+                            txtZHoleTop: pat.ZHoleTop.ToString("0.0", CultureInfo.InvariantCulture),
+                            txtZPlusExt: "5",
+                            snapshotDefaults: null
+                        );
+
+                        // Store hole tokens as ANCHORED region lines (indices 2..end)
+                        var sbH = new StringBuilder(1024);
+                        for (int i = 2; i < rs.RegionLines.Count; i++)
+                        {
+                            string sLine = rs.RegionLines[i] ?? "";
+                            if (string.IsNullOrWhiteSpace(sLine)) continue;
+                            if (sbH.Length > 0) sbH.Append('\n');
+                            sbH.Append(sLine);
+                        }
+                        rs.PageSnapshot.Values["HoleLineTexts"] = sbH.ToString();
+
+                        DrillSets.Add(rs);
+                    }
+                    else
+                    {
+                        rs = existing;
+
+                        CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.EditExisting(
+                            rs: rs,
+                            regionLines: taggedNoSpace,
+                            drillDepthIndex: 0,
+                            coordMode: "Cartesian",
+                            txtChamfer: "1",
+                            txtHoleDia: "",
+                            txtPointAngle: "118",
+                            txtZHoleTop: pat.ZHoleTop.ToString("0.0", CultureInfo.InvariantCulture),
+                            txtZPlusExt: "5",
+                            snapshotDefaults: null
+                        );
+
+                        // Store hole tokens as ANCHORED region lines (indices 2..end)
+                        var sbH = new StringBuilder(1024);
+                        for (int i = 2; i < rs.RegionLines.Count; i++)
+                        {
+                            string sLine = rs.RegionLines[i] ?? "";
+                            if (string.IsNullOrWhiteSpace(sLine)) continue;
+                            if (sbH.Length > 0) sbH.Append('\n');
+                            sbH.Append(sLine);
+                        }
+                        rs.PageSnapshot.Values["HoleLineTexts"] = sbH.ToString();
+                    }
+
+                    // Step 5: build RTB insert from the *stored* region lines
+                    var insert = new List<string>();
+                    insert.Add("(" + pat.Name + " ST)");
+                    for (int i = 0; i < rs.RegionLines.Count; i++)
+                    {
+                        string stored = rs.RegionLines[i] ?? "";
+                        string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                        string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                        if (!string.IsNullOrWhiteSpace(aligned))
+                            insert.Add(aligned);
+                    }
+                    insert.Add("(" + pat.Name + " END)");
+
+                    blocksToAppend.AddRange(insert);
+                    blocksToAppend.Add("");
+                }
                 else
                 {
                     // MILL translator (Step 1: no changes)
                     var rawGcode = CNC_Improvements_gcode_solids.Utilities.FaptMill.TranslateFaptRegionToMillGcode(regions[idx]);
                     string strippedBaseName = "";
-                   
+
                     // If the MILL FAPT header contains inline transform tokens, we must run ResolveTrans
                     // on the GENERATED MILL GCODE (rawGcode), NOT on the FAPT text and NOT by searching editor text.
                     bool hasTransformTokens =
@@ -4910,9 +5065,9 @@ namespace CNC_Improvements_gcode_solids
                     {
                         // No transforms: single path is just the generated mill gcode
                         millPaths = new List<List<string>>
-    {
-        rawGcode ?? new List<string>()
-    };
+                {
+                    rawGcode ?? new List<string>()
+                };
                     }
 
                     // Now store/append EACH returned path as its own MILL region:
@@ -4949,7 +5104,7 @@ namespace CNC_Improvements_gcode_solids
                         millAlphaCounter++;
 
                         var taggedNoSpace = new List<string>();
-                        int n = 0;
+                        int nn = 0;
 
                         for (int i = 0; i < pathRaw.Count; i++)
                         {
@@ -4957,9 +5112,9 @@ namespace CNC_Improvements_gcode_solids
                             if (string.IsNullOrWhiteSpace(gl))
                                 continue;
 
-                            string tag = "(m:" + alpha + n.ToString("0000", CultureInfo.InvariantCulture) + ")";
+                            string tag = "(m:" + alpha + nn.ToString("0000", CultureInfo.InvariantCulture) + ")";
                             taggedNoSpace.Add(gl + tag); // NO space
-                            n++;
+                            nn++;
                         }
 
                         sb.AppendLine("----- GENERATED MILL GCODE (FINAL PATH, tagged, no-space) -----");
@@ -4987,8 +5142,6 @@ namespace CNC_Improvements_gcode_solids
 
                         RegionSet rs;
                         var existing = FindMillSetByName(nameThis);
-
-
 
                         if (existing == null)
                         {
@@ -5040,7 +5193,6 @@ namespace CNC_Improvements_gcode_solids
                                 removeSplitter: "0",
                                 clipper: "0",
                                 clipperIsland: "0",
-                                 // FAPT MILL defaults: Closed CL Wire + Inner
                                 guidedTool: "0",
                                 closedWire: "1",
                                 closedInner: "1",
@@ -5066,31 +5218,23 @@ namespace CNC_Improvements_gcode_solids
                         blocksToAppend.Add("");
                     }
                 }
-
-
-
-
-                sb.AppendLine("");
             }
 
-            // Log window
-            CNC_Improvements_gcode_solids.Utilities.FaptTurn.ShowTextWindow(this, "FAPT Regions", sb.ToString());
-
-            // Append to END of the RichTextBox
+            // Append blocks to editor
             if (blocksToAppend.Count > 0)
             {
-                string appendText = string.Join(Environment.NewLine, blocksToAppend) + Environment.NewLine;
-                TxtGcode.Document.Blocks.Add(new Paragraph(new Run(appendText)));
-                TxtGcode.ScrollToEnd();
+                string textToAppend = string.Join("\n", blocksToAppend);
+
+                TxtGcode.CaretPosition = TxtGcode.Document.ContentEnd;
+                TxtGcode.CaretPosition.InsertTextInRun("\n" + textToAppend + "\n");
             }
 
-
-            // Resync after programmatic edit (required for searches/markers/line indices)
-            SyncGcodeLinesFromEditor();
-            CNC_Improvements_gcode_solids.Utilities.UiUtilities.RebuildAndStoreNumberedLineStartIndex(TxtGcode);
-
-
+            // log window
+            var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("FAPT CONVERSION", sb.ToString());
+            logWindow.Owner = this;
+            logWindow.Show();
         }
+
 
         // Strip any inline transform tokens from the region name.
         // Example: "GO2 #ROT,100,0,20,5#" => "GO2"
@@ -5121,10 +5265,14 @@ namespace CNC_Improvements_gcode_solids
 
         private void Btntesting(object sender, RoutedEventArgs e)
         {
+            RegionDump();
+        }
 
+
+
+        private void RegionDump()
+        {
             //Build3TestRegions_Static();
-
-
             try
             {
                 var sb = new StringBuilder(65536);
@@ -5387,6 +5535,16 @@ namespace CNC_Improvements_gcode_solids
                 MessageBox.Show(ex.Message, "TEST DUMP", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+
+
+
+
+
+
+
+
+
 
         // Add this inside MainWindow class
         // Uses the canonical builders.

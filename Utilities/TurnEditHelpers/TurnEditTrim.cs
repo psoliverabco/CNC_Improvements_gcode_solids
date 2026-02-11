@@ -723,7 +723,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 Title = "Trim: pick outcome",
                 Width = 640,
                 Height = 230,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.Manual,
                 ResizeMode = ResizeMode.NoResize,
                 Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)),
                 Owner = Application.Current?.MainWindow
@@ -814,7 +814,25 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 w.Close();
             };
 
-            w.Loaded += (_, __) => Refresh();
+            w.Loaded += (_, __) =>
+            {
+                // Bottom-right of the usable work area (taskbar-aware)
+                Rect wa = SystemParameters.WorkArea;
+                const double M = 12.0;
+
+                double left = wa.Right - w.Width - M;
+                double top = wa.Bottom - w.Height - M;
+
+                // clamp (just in case of odd DPI/size)
+                if (left < wa.Left) left = wa.Left + M;
+                if (top < wa.Top) top = wa.Top + M;
+
+                w.Left = left;
+                w.Top = top;
+
+                Refresh();
+            };
+
 
             bool? ok = w.ShowDialog();
 

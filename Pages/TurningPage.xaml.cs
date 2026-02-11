@@ -702,6 +702,9 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (rtb == null || lines == null)
                 return;
 
+            UiUtilities.ForceLinesUppercaseInPlace(lines);
+
+
             rtb.Document.Blocks.Clear();
 
             int regionStart = -1;
@@ -822,10 +825,10 @@ namespace CNC_Improvements_gcode_solids.Pages
 
         private static bool TrySplitUniqueTag(string line, out string mainText, out string tagText)
         {
-
+           
             mainText = line ?? string.Empty;
             tagText = string.Empty;
-
+           
             if (string.IsNullOrEmpty(mainText))
                 return false;
 
@@ -2155,7 +2158,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 // -------------------------------
                 var owner = Window.GetWindow(this);
 
-                var viewer = new ProfileViewWindow();
+                var viewer = new TurnViewWindow();
                 if (owner != null)
                     viewer.Owner = owner;
 
@@ -2235,7 +2238,7 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
                 var owner = Window.GetWindow(this);
 
-                var viewer = new ProfileViewWindow();
+                var viewer = new TurnViewWindow();
                 if (owner != null)
                     viewer.Owner = owner;
 

@@ -81,15 +81,15 @@
 
                             <!-- CLColor -->
                             <TextBlock Grid.Row="3" Foreground="#DDD" Grid.Column="0" Text="CL"  VerticalAlignment="Center"/>
-                            <TextBox x:Name="TxtCLColor" Grid.Row="4" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
+                            <TextBox x:Name="TxtCLColor" Grid.Row="3" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="3" Grid.Column="2" Content="Pick..." Tag="TxtCLColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
-                            <Rectangle x:Name="RectCLColor" Grid.Row="4" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+                            <Rectangle x:Name="RectCLColor" Grid.Row="3" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
 
                             <!-- GraphicTextColor -->
                             <TextBlock Grid.Row="4" Foreground="#DDD" Grid.Column="0" Text="GraphText"  VerticalAlignment="Center"/>
-                            <TextBox x:Name="TxtGraphicTextColor" Grid.Row="3" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
+                            <TextBox x:Name="TxtGraphicTextColor" Grid.Row="4" Grid.Column="1" Margin="8,3,8,3" TextChanged="ColorText_TextChanged"/>
                             <Button Grid.Row="4" Grid.Column="2" Content="Pick..." Tag="TxtGraphicTextColor" Click="BtnPickColor_Click" Margin="3,4,0,4"/>
-                            <Rectangle x:Name="RectGraphicTextColor" Grid.Row="3" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
+                            <Rectangle x:Name="RectGraphicTextColor" Grid.Row="4" Grid.Column="3" Width="30" Height="20" RadiusX="3" RadiusY="3" Stroke="#888" Margin="8,4,4,4"/>
                         </Grid>
                     </StackPanel>
                 </Border>

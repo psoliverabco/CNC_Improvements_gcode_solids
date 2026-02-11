@@ -79,8 +79,8 @@ https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/ref
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/LogWindow.xaml.cs
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/MillViewWindow.xaml
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/MillViewWindow.xaml.cs
-https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/ProfileViewWindow.xaml
-https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/ProfileViewWindow.xaml.cs
+https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/TurnViewWindow.xaml
+https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/TurnViewWindow.xaml.cs
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/TextSearching.cs
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/TurnEditArcLaw.cs
 https://raw.githubusercontent.com/psoliverabco/CNC_Improvements_gcode_solids/refs/heads/master/Utilities/TurnEditWindow.xaml

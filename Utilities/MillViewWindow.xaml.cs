@@ -1186,16 +1186,27 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     _items.Add(item);
                 }
 
-                // GuidedTool: CL optional overlay when toggle is ON (unchanged here)
+                // GuidedTool: CL optional overlay when toggle is ON
+                // IMPORTANT: use the SAME wire sampling logic as Closed CL Wire display,
+                // but do NOT require closure (so arcs render as arcs, not endpoint chords).
                 if (_showCL)
                 {
-                    var ptsWire = new List<Point>();
-                    ptsWire.Add(new Point(segsGroup[0].X1, segsGroup[0].Y1));
-                    for (int i = 0; i < segsGroup.Count; i++)
-                        ptsWire.Add(new Point(segsGroup[i].X2, segsGroup[i].Y2));
+                    if (TryBuildWireDisplayPointsWorld(segsGroup, requireClosedLoop: false, out var ptsWorld, out string _))
+                    {
+                        DrawCLPolyline(ptsWorld, forceOn: false);
+                    }
+                    else
+                    {
+                        // Fallback: original endpoint-only polyline (should be rare)
+                        var ptsFallback = new List<Point>();
+                        ptsFallback.Add(new Point(segsGroup[0].X1, segsGroup[0].Y1));
+                        for (int i = 0; i < segsGroup.Count; i++)
+                            ptsFallback.Add(new Point(segsGroup[i].X2, segsGroup[i].Y2));
 
-                    DrawCLPolyline(ptsWire, forceOn: false);
+                        DrawCLPolyline(ptsFallback, forceOn: false);
+                    }
                 }
+
             }
 
             ApplySelectionStyles();
@@ -4876,13 +4887,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // 7) Display: render EXACTLY from the Python-friendly primitives (no Fit/Reset)
             RenderPythonFriendlyPrimitiveLoops(outerPyLoops, islandPyLoops);
         }
-
-
-
-
-
-
-
 
 
     }

@@ -29,9 +29,12 @@ namespace CNC_Improvements_gcode_solids.Pages
 
         public TransformMatrixVm DefaultMatrix { get; private set; }
 
-        // --- Cut/Paste clipboard ---
-        private string _clipboardRegion = "";
+       
+        // --- Cut/Paste clipboard (multi) ---
+        private readonly List<string> _clipboardRegions = new List<string>();
         private bool _clipboardHasValue = false;
+        public ObservableCollection<string> SelectedRegions { get; } = new ObservableCollection<string>();
+
 
         // Cached master order (Turn -> Mill -> Drill) from last RefreshFromMainWindow call
         private List<string> _masterRegionOrder = new List<string>();
@@ -309,45 +312,82 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (selMatrix == null)
                 return;
 
-            string region = (selMatrix.SelectedRegion ?? "").Trim();
-            if (region.Length == 0)
+            // Always build a LIST so Count is a property (no "method group" errors)
+            List<string> picked = selMatrix.SelectedRegions
+                .Select(s => (s ?? "").Trim())
+                .Where(s => s.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Fallback to single selection
+            if (picked.Count == 0)
             {
-                MessageBox.Show("Select a region in the card first.", "Cut Region",
+                string single = (selMatrix.SelectedRegion ?? "").Trim();
+                if (single.Length > 0)
+                    picked.Add(single);
+            }
+
+            if (picked.Count == 0)
+            {
+                MessageBox.Show("Select one or more regions in the card first.", "Cut Region",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            // If region no longer exists in the master list, refuse and clear it out
+            // Validate exists in master
             if (_masterRegionOrder != null && _masterRegionOrder.Count > 0)
             {
-                bool exists = _masterRegionOrder.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase));
-                if (!exists)
+                var masterSet = new HashSet<string>(
+                    _masterRegionOrder.Select(x => (x ?? "").Trim()).Where(x => x.Length > 0),
+                    StringComparer.OrdinalIgnoreCase);
+
+                for (int i = picked.Count - 1; i >= 0; i--)
                 {
-                    RemoveRegionFromAllMatrices(region);
-                    MessageBox.Show("That region no longer exists in the set lists.", "Cut Region",
+                    if (!masterSet.Contains(picked[i]))
+                    {
+                        RemoveRegionFromAllMatrices(picked[i]);
+                        picked.RemoveAt(i);
+                    }
+                }
+
+                if (picked.Count == 0)
+                {
+                    MessageBox.Show("Those regions no longer exist in the set lists.", "Cut Region",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
             }
 
             // Remove from current matrix
-            for (int i = selMatrix.Regions.Count - 1; i >= 0; i--)
+            foreach (var region in picked)
             {
-                if (string.Equals((selMatrix.Regions[i] ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase))
-                    selMatrix.Regions.RemoveAt(i);
+                for (int i = selMatrix.Regions.Count - 1; i >= 0; i--)
+                {
+                    if (string.Equals((selMatrix.Regions[i] ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase))
+                        selMatrix.Regions.RemoveAt(i);
+                }
             }
+
+            // Clear selection
             selMatrix.SelectedRegion = "";
+            selMatrix.SelectedRegions.Clear();
 
             // Clipboard
-            _clipboardRegion = region;
-            _clipboardHasValue = true;
+            _clipboardRegions.Clear();
+            _clipboardRegions.AddRange(picked);
+            _clipboardHasValue = _clipboardRegions.Count > 0;
 
-            // Unassigned => goes to Default card immediately (per your rule)
-            if (!DefaultMatrix.Regions.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase)))
-                DefaultMatrix.Regions.Add(region);
+            // Unassigned -> default immediately
+            foreach (var region in picked)
+            {
+                if (!DefaultMatrix.Regions.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase)))
+                    DefaultMatrix.Regions.Add(region);
+            }
 
             ReorderAllCards();
         }
+
+
 
         private void BtnPasteRegion_Click(object sender, RoutedEventArgs e)
         {
@@ -355,39 +395,72 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (target == null)
                 return;
 
-            if (!_clipboardHasValue || string.IsNullOrWhiteSpace(_clipboardRegion))
+            if (!_clipboardHasValue || _clipboardRegions.Count == 0)
             {
-                MessageBox.Show("Clipboard is empty. Cut a region first.", "Paste Region",
+                MessageBox.Show("Clipboard is empty. Cut one or more regions first.", "Paste Region",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            string region = _clipboardRegion.Trim();
+            // Always build a LIST so Count is a property (no "method group" errors)
+            List<string> toPaste = _clipboardRegions
+                .Select(s => (s ?? "").Trim())
+                .Where(s => s.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            // If region no longer exists in the master list, refuse and clear clipboard
+            if (toPaste.Count == 0)
+            {
+                _clipboardRegions.Clear();
+                _clipboardHasValue = false;
+                MessageBox.Show("Clipboard is empty. Cut one or more regions first.", "Paste Region",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Validate exists in master
             if (_masterRegionOrder != null && _masterRegionOrder.Count > 0)
             {
-                bool exists = _masterRegionOrder.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase));
-                if (!exists)
+                var masterSet = new HashSet<string>(
+                    _masterRegionOrder.Select(x => (x ?? "").Trim()).Where(x => x.Length > 0),
+                    StringComparer.OrdinalIgnoreCase);
+
+                for (int i = toPaste.Count - 1; i >= 0; i--)
                 {
-                    _clipboardRegion = "";
+                    if (!masterSet.Contains(toPaste[i]))
+                        toPaste.RemoveAt(i);
+                }
+
+                if (toPaste.Count == 0)
+                {
+                    _clipboardRegions.Clear();
                     _clipboardHasValue = false;
-                    MessageBox.Show("That region no longer exists in the set lists.", "Paste Region",
+                    MessageBox.Show("Those regions no longer exist in the set lists.", "Paste Region",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
             }
 
             // Move into target: remove from every other matrix, then add to target
-            RemoveRegionFromAllMatrices(region);
+            foreach (var region in toPaste)
+            {
+                RemoveRegionFromAllMatrices(region);
 
-            if (!target.Regions.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase)))
-                target.Regions.Add(region);
+                if (!target.Regions.Any(x => string.Equals((x ?? "").Trim(), region, StringComparison.OrdinalIgnoreCase)))
+                    target.Regions.Add(region);
+            }
 
             ReorderAllCards();
 
-            target.SelectedRegion = region;
+            // Reflect selection
+            target.SelectedRegions.Clear();
+            foreach (var region in toPaste)
+                target.SelectedRegions.Add(region);
+
+            target.SelectedRegion = toPaste[0];
         }
+
+
 
         // ------------------------------------------------------------
         // Existing UI
@@ -539,6 +612,8 @@ namespace CNC_Improvements_gcode_solids.Pages
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
+    // File: Pages/TransMatrix.xaml.cs
+    // Position: REPLACE THE ENTIRE TransformMatrixVm CLASS WITH THIS
     public sealed class TransformMatrixVm : INotifyPropertyChanged
     {
         private string _matrixName = "";
@@ -562,7 +637,7 @@ namespace CNC_Improvements_gcode_solids.Pages
 
         public ObservableCollection<string> Regions { get; } = new ObservableCollection<string>();
 
-        // Used by MatrixCard ListView SelectedItem binding
+        // Single-select (kept for backward compatibility)
         public string SelectedRegion
         {
             get => _selectedRegion;
@@ -574,25 +649,8 @@ namespace CNC_Improvements_gcode_solids.Pages
             }
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        // Multi-select backing collection (NEW)
+        public ObservableCollection<string> SelectedRegions { get; } = new ObservableCollection<string>();
 
         public static TransformMatrixVm CreateDefaultLocked()
         {
@@ -612,4 +670,5 @@ namespace CNC_Improvements_gcode_solids.Pages
         private void OnPropertyChanged([CallerMemberName] string? name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
+
 }

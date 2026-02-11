@@ -918,16 +918,23 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
 
             // ---- Group name label on the cross section canvas (top-left) ----
+            // ---- Group label + notes (Dia / ZTop / Depth) on the cross section canvas (top-left) ----
             {
-                string title = $"SET: {vm.GroupName}";
+                double depth = vm.ZHoleTop - vm.DrillZApex;
+                if (!double.IsFinite(depth)) depth = 0.0;
+
+                string notes =
+                    $"SET: {vm.GroupName}\n" +
+                    $"Dia={vm.HoleDia:0.###}   ZTop={vm.ZHoleTop:0.###}   Depth={depth:0.###}";
 
                 var t = new TextBlock
                 {
-                    Text = title,
+                    Text = notes,
                     Foreground = _graphicText,
                     FontFamily = new FontFamily("Consolas"),
                     FontSize = 13,
-                    FontWeight = FontWeights.SemiBold
+                    FontWeight = FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.NoWrap
                 };
 
                 // small dark background so it stays readable over lines
@@ -935,7 +942,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 {
                     Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
                     CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(6, 0, 3, 0),
+                    Padding = new Thickness(6, 2, 6, 2),
                     Child = t
                 };
 
@@ -945,6 +952,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                 canvas.Children.Add(bg);
             }
+
 
 
 

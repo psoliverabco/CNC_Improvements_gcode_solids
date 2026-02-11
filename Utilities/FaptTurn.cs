@@ -374,8 +374,15 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var r = regions[i];
                 if (r == null || r.Count == 0) continue;
 
-                string first = r[0] ?? "";
-                string name = ExtractRegionNameFromG112Line(first);
+                // TURN/MILL typically put the name after ')' on line 0
+                // DRILL puts the name after ')' on the G121x line (usually line 1)
+                string name = "";
+
+                if (r.Count > 0)
+                    name = ExtractFaptRegionName(r[0] ?? "");
+
+                if (string.IsNullOrWhiteSpace(name) && r.Count > 1)
+                    name = ExtractFaptRegionName(r[1] ?? "");
 
                 // Your rule: if no name after ')' then don't show / don't preview
                 if (string.IsNullOrWhiteSpace(name))
@@ -427,7 +434,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 ItemsSource = items
             };
 
-            // Display only Name, but keep RegionIndex in the object
             list.DisplayMemberPath = nameof(RegionPickItem.Name);
 
             Grid.SetRow(list, 1);
@@ -479,7 +485,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 foreach (var obj in list.SelectedItems)
                 {
                     if (obj is RegionPickItem it)
-                        picked.Add(it.RegionIndex); // <-- correct mapping
+                        picked.Add(it.RegionIndex);
                 }
 
                 w.DialogResult = true;
@@ -493,14 +499,14 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 w.Close();
             };
 
-            // show
             bool? res = w.ShowDialog();
             if (res != true) return new List<int>();
 
-            // Ensure stable order (optional)
             picked.Sort();
             return picked;
         }
+
+
 
         // Helper DTO for the picker
         private sealed class RegionPickItem

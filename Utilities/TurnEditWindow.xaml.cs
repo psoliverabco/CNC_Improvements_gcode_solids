@@ -607,6 +607,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 _translate.Y = 0.0;
 
                 RenderEditGeometry(_editSegs);
+                CenterCurrentGeometryInViewport(_editSegs);
                 _renderer.DrawBackgroundGridWorld();
 
                 if (Settings.Default.LogWindowShow)
@@ -624,6 +625,50 @@ namespace CNC_Improvements_gcode_solids.Utilities
             {
                 MessageBox.Show(ex.Message, "Turn Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+        // ============================================================
+        // Fit centering helper (Fit must be centered X/Y)
+        // ============================================================
+        private void CenterCurrentGeometryInViewport(IReadOnlyList<EditSeg> segs)
+        {
+            if (segs == null || segs.Count == 0) return;
+            if (!_renderer.MapValid) return;
+
+            // World bounds from segs
+            double minX = double.PositiveInfinity, maxX = double.NegativeInfinity;
+            double minZ = double.PositiveInfinity, maxZ = double.NegativeInfinity;
+
+            for (int i = 0; i < segs.Count; i++)
+                segs[i].ExpandWorldBounds(ref minX, ref maxX, ref minZ, ref maxZ);
+
+            if (!TurnEditMath.IsFinite(minX) || !TurnEditMath.IsFinite(maxX) ||
+                !TurnEditMath.IsFinite(minZ) || !TurnEditMath.IsFinite(maxZ))
+                return;
+
+            // Visible rect in CANVAS coords (viewport-sized rect, not 3x canvas)
+            Rect vis = GetVisibleCanvasRectInCanvasCoords();
+            if (vis.Width <= 1 || vis.Height <= 1) return;
+
+            // Compute screen/canvas bounds of world AABB under CURRENT transforms
+            Point s1 = WorldToScreen(new Point(minX, minZ));
+            Point s2 = WorldToScreen(new Point(minX, maxZ));
+            Point s3 = WorldToScreen(new Point(maxX, minZ));
+            Point s4 = WorldToScreen(new Point(maxX, maxZ));
+
+            double sMinX = Math.Min(Math.Min(s1.X, s2.X), Math.Min(s3.X, s4.X));
+            double sMaxX = Math.Max(Math.Max(s1.X, s2.X), Math.Max(s3.X, s4.X));
+            double sMinY = Math.Min(Math.Min(s1.Y, s2.Y), Math.Min(s3.Y, s4.Y));
+            double sMaxY = Math.Max(Math.Max(s1.Y, s2.Y), Math.Max(s3.Y, s4.Y));
+
+            Point geomCenter = new Point((sMinX + sMaxX) * 0.5, (sMinY + sMaxY) * 0.5);
+            Point visCenter = new Point(vis.Left + vis.Width * 0.5, vis.Top + vis.Height * 0.5);
+
+            // Because transform order is Scale then Translate, a translate delta in canvas coords
+            // shifts the rendered geometry by that same amount in canvas coords.
+            Vector d = visCenter - geomCenter;
+
+            _translate.X += d.X;
+            _translate.Y += d.Y;
         }
 
 
@@ -716,7 +761,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 _editSegs = ordered;
 
                 // Export (NO tool comp). Use IK to remove R ambiguity.
-                List<string> newRegionLines = BuildRegionGcodeFromClosedLoop_IK(ordered);
+                var outSegs = ConvertEditSegsToOutputSegs(ordered);
+                List<string> newRegionLines = TurnEditOutputGcode.BuildRegionGcodeFromClosedLoop_IK(outSegs);
 
                 // Name
                 string? proposed = PromptForRegionName("New TURN Edit Region Name", "Turn Edit Region");
@@ -729,7 +775,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 string newName = MakeUniqueTurnSetName(proposed.Trim());
 
                 // Tag ST/END for editor output only
-                var marked = AppendStartEndMarkers(newRegionLines, newName);
+                var marked = TurnEditOutputGcode.AppendStartEndMarkers(newRegionLines, newName);
 
                 // Append to editor
                 SyncGcodeLinesFromEditor();
@@ -741,15 +787,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var main = GetMain();
 
                 // Compute TURN marker indices (0-based into regionLines)
-                int firstX = -1, firstZ = -1, lastX = -1, lastZ = -1;
-                for (int i = 0; i < newRegionLines.Count; i++)
-                {
-                    string s = newRegionLines[i] ?? "";
-                    if (firstX < 0 && LineHasAxis(s, 'X')) firstX = i;
-                    if (firstZ < 0 && LineHasAxis(s, 'Z')) firstZ = i;
-                    if (LineHasAxis(s, 'X')) lastX = i;
-                    if (LineHasAxis(s, 'Z')) lastZ = i;
-                }
+                var (firstX, firstZ, lastX, lastZ) = TurnEditOutputGcode.ComputeTurnMarkerIndices(newRegionLines);
 
                 if (firstX < 0 || firstZ < 0 || lastX < 0 || lastZ < 0)
                     throw new Exception("Cannot save region: X/Z markers not found.");
@@ -790,6 +828,53 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
         }
 
+
+        // ============================================================
+        // Save: Output conversion helpers
+        // ============================================================
+        private static List<TurnEditOutputGcode.Seg> ConvertEditSegsToOutputSegs(IReadOnlyList<EditSeg> ordered)
+        {
+            var list = new List<TurnEditOutputGcode.Seg>(ordered?.Count ?? 0);
+            if (ordered == null) return list;
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                var s = ordered[i];
+
+                if (s is EditLineSeg ln)
+                {
+                    list.Add(new TurnEditOutputGcode.Seg
+                    {
+                        Kind = TurnEditOutputGcode.SegKind.Line,
+                        A = ln.A,
+                        B = ln.B
+                    });
+                }
+                else if (s is EditArcSeg a)
+                {
+                    list.Add(new TurnEditOutputGcode.Seg
+                    {
+                        Kind = TurnEditOutputGcode.SegKind.Arc,
+                        A = a.A,
+                        B = a.B,
+                        M = a.M,
+                        C = a.C,
+                        CCW = a.CCW
+                    });
+                }
+                else
+                {
+                    throw new Exception("Unknown segment type during output conversion.");
+                }
+            }
+
+            return list;
+        }
+
+
+
+
+
         private void ShowChainDiagnosticsIfEnabled(string title, string context, int segCountBefore, int segCountAfter, double sewTol, double editTol, double maxEndpointGap, bool closed)
         {
             if (!Settings.Default.LogWindowShow) return;
@@ -805,6 +890,21 @@ namespace CNC_Improvements_gcode_solids.Utilities
             sb.AppendLine($"Segments after  = {segCountAfter}");
             sb.AppendLine($"Max endpoint gap after chaining = {maxEndpointGap.ToString("0.########", CultureInfo.InvariantCulture)}");
             sb.AppendLine($"Closed (editor) = {(closed ? "YES" : "NO")}");
+
+            // Dump output-seg diagnostics (what export will use)
+            try
+            {
+                sb.AppendLine();
+                sb.AppendLine(TurnEditOutputGcode.BuildSegDiagnosticsText(ConvertEditSegsToOutputSegs(_editSegs)));
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine();
+                sb.AppendLine("=== OUTPUT SEGS (diagnostics failed) ===");
+                sb.AppendLine(ex.Message);
+            }
+
+
 
             var ownerW = this.Owner ?? Application.Current.MainWindow;
             var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow(title, sb.ToString());
@@ -828,12 +928,84 @@ namespace CNC_Improvements_gcode_solids.Utilities
             _translate.Y = 0.0;
 
             if (_editSegs != null && _editSegs.Count > 0)
+            {
+                // 1) Let renderer do its fit (scale + initial translate)
                 RenderEditGeometry(_editSegs);
+
+                // 2) Then force TRUE centering inside the current visible viewport (X + Y)
+                CenterCurrentGeometryInView(_editSegs);
+            }
 
             UpdateUiState("Fit");
 
             _renderer.DrawBackgroundGridWorld();
         }
+
+
+        // Computes conservative world bounds for the current edit geometry.
+        private static Rect GetWorldBounds(IReadOnlyList<EditSeg> segs)
+        {
+            if (segs == null || segs.Count == 0)
+                return Rect.Empty;
+
+            double minX = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity;
+            double minZ = double.PositiveInfinity;
+            double maxZ = double.NegativeInfinity;
+
+            for (int i = 0; i < segs.Count; i++)
+            {
+                segs[i].ExpandWorldBounds(ref minX, ref maxX, ref minZ, ref maxZ);
+            }
+
+            if (!TurnEditMath.IsFinite(minX) || !TurnEditMath.IsFinite(maxX) ||
+                !TurnEditMath.IsFinite(minZ) || !TurnEditMath.IsFinite(maxZ))
+                return Rect.Empty;
+
+            if (maxX < minX || maxZ < minZ)
+                return Rect.Empty;
+
+            return new Rect(new Point(minX, minZ), new Point(maxX, maxZ));
+        }
+
+        // After the renderer's Fit, nudge translate so geometry is centered in the visible viewport (both X and Y).
+        private void CenterCurrentGeometryInView(IReadOnlyList<EditSeg> segs)
+        {
+            if (segs == null || segs.Count == 0) return;
+            if (!_renderer.MapValid) return;
+
+            Rect wb = GetWorldBounds(segs);
+            if (wb.IsEmpty) return;
+
+            // Geometry bounds in CANVAS coords (using current map/transform after renderer fit)
+            Point p1 = WorldToScreen(new Point(wb.Left, wb.Top));
+            Point p2 = WorldToScreen(new Point(wb.Right, wb.Bottom));
+
+            double gLeft = Math.Min(p1.X, p2.X);
+            double gRight = Math.Max(p1.X, p2.X);
+            double gTop = Math.Min(p1.Y, p2.Y);
+            double gBottom = Math.Max(p1.Y, p2.Y);
+
+            Point geomCenterCanvas = new Point((gLeft + gRight) * 0.5, (gTop + gBottom) * 0.5);
+
+            // Visible viewport rect expressed in CANVAS coords (already accounts for pan/zoom)
+            Rect vis = _renderer.GetVisibleCanvasRectInCanvasCoords();
+            if (vis.Width <= 1 || vis.Height <= 1) return;
+
+            Point viewCenterCanvas = new Point(vis.Left + vis.Width * 0.5, vis.Top + vis.Height * 0.5);
+
+            // Translate is AFTER scale in the transform chain, so this delta is in canvas/screen units.
+            Vector delta = viewCenterCanvas - geomCenterCanvas;
+
+            if (TurnEditMath.IsFinite(delta.X) && TurnEditMath.IsFinite(delta.Y))
+            {
+                _translate.X += delta.X;
+                _translate.Y += delta.Y;
+            }
+        }
+
+
+
 
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
@@ -963,7 +1135,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     Title = "Deleted Segments (Insert Back)",
                     Width = 980,
                     Height = 520,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
                     ResizeMode = ResizeMode.CanResize,
                     Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)),
                     Owner = ownerW
@@ -1811,6 +1983,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             w.Loaded += (s, e) =>
             {
+                PositionDialogBottomRight(w, ownerW, 16.0);
                 tb.Focus();
                 tb.SelectAll();
             };
@@ -2134,87 +2307,207 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 return false;
             }
 
-            var remaining = new List<EditSeg>(input.Count);
+            if (!TurnEditMath.IsFinite(tol) || tol <= 0)
+                tol = 1e-6;
+
+            // --------------------------------------------------------------------
+            // ROBUST ORDER-INDEPENDENT CHAIN:
+            // 1) Cluster endpoints into nodes (within tol).
+            // 2) Each segment connects 2 nodes.
+            // 3) Closed loop requires every node degree == 2.
+            // 4) Traverse deterministically from "lowest Z then lowest X" node.
+            // 5) Snap every segment endpoint EXACTLY to node representative point.
+            // --------------------------------------------------------------------
+
+            // Clone input so we never mutate original list
+            var segs = new List<EditSeg>(input.Count);
             for (int i = 0; i < input.Count; i++)
-                remaining.Add(CloneSeg(input[i]));
+                segs.Add(CloneSeg(input[i]));
 
-            var first = remaining[0];
-            remaining.RemoveAt(0);
+            // Node clustering
+            var nodes = new List<Point>();               // representative point per node
+            var nodeDegree = new List<int>();            // degree per node
 
-            ordered.Add(first);
-
-            Point start = first.Start;
-            Point curEnd = first.End;
-
-            double maxGap = 0.0;
-
-            while (remaining.Count > 0)
+            int FindOrAddNode(Point p, ref double maxSnap)
             {
-                int bestIdx = -1;
-                bool bestReverse = false;
-                double bestDist = double.PositiveInfinity;
+                int best = -1;
+                double bestD = double.PositiveInfinity;
 
-                for (int i = 0; i < remaining.Count; i++)
+                for (int i = 0; i < nodes.Count; i++)
                 {
-                    var s = remaining[i];
-
-                    double d0 = Dist(curEnd, s.Start);
-                    if (d0 < bestDist)
+                    double d = Dist(p, nodes[i]);
+                    if (d < bestD)
                     {
-                        bestDist = d0;
-                        bestIdx = i;
-                        bestReverse = false;
-                    }
-
-                    double d1 = Dist(curEnd, s.End);
-                    if (d1 < bestDist)
-                    {
-                        bestDist = d1;
-                        bestIdx = i;
-                        bestReverse = true;
+                        bestD = d;
+                        best = i;
                     }
                 }
 
-                if (bestIdx < 0 || bestDist > tol)
+                if (best >= 0 && bestD <= tol)
                 {
-                    failPointWorld = curEnd;
-                    maxEndpointGap = maxGap;
-                    failReason = $"Chain break: no next endpoint found within tol={tol.ToString("0.###", CultureInfo.InvariantCulture)}.";
+                    if (bestD > maxSnap) maxSnap = bestD;
+                    return best;
+                }
+
+                nodes.Add(p);
+                nodeDegree.Add(0);
+                return nodes.Count - 1;
+            }
+
+            double maxSnapDist = 0.0;
+
+            // Segment graph record
+            // We keep (seg, n0, n1). n0/n1 are the clustered nodes for seg.Start/seg.End
+            var edges = new List<(EditSeg seg, int n0, int n1)>(segs.Count);
+
+            for (int i = 0; i < segs.Count; i++)
+            {
+                var s = segs[i];
+
+                int n0 = FindOrAddNode(s.Start, ref maxSnapDist);
+                int n1 = FindOrAddNode(s.End, ref maxSnapDist);
+
+                if (n0 == n1)
+                {
+                    // Degenerate segment (both ends same node) -> breaks loop topology
+                    failPointWorld = nodes[n0];
+                    maxEndpointGap = maxSnapDist;
+                    failReason = "Degenerate segment: start and end collapse to same node.";
                     return false;
                 }
 
-                if (bestDist > maxGap)
-                    maxGap = bestDist;
-
-                var next = remaining[bestIdx];
-                remaining.RemoveAt(bestIdx);
-
-                if (bestReverse) next.ReverseInPlace();
-
-                // Snap continuity: force next start to current end
-                next.SetStart(curEnd);
-
-                ordered.Add(next);
-                curEnd = next.End;
+                edges.Add((s, n0, n1));
+                nodeDegree[n0]++;
+                nodeDegree[n1]++;
             }
 
-            double closeDist = Dist(curEnd, start);
-            if (closeDist > maxGap)
-                maxGap = closeDist;
-
-            maxEndpointGap = maxGap;
-
-            if (closeDist > tol)
+            // Closed loop needs all nodes degree == 2
+            for (int i = 0; i < nodes.Count; i++)
             {
-                failPointWorld = curEnd;
-                failReason = $"Loop not closed: last end is {closeDist.ToString("0.###", CultureInfo.InvariantCulture)} away from start (tol={tol.ToString("0.###", CultureInfo.InvariantCulture)}).";
+                if (nodeDegree[i] != 2)
+                {
+                    failPointWorld = nodes[i];
+                    maxEndpointGap = maxSnapDist;
+                    failReason = $"Topology not a single closed loop: node degree {nodeDegree[i]} (expected 2).";
+                    return false;
+                }
+            }
+
+            // Build adjacency: node -> list of edge indices
+            var adj = new List<List<int>>(nodes.Count);
+            for (int i = 0; i < nodes.Count; i++)
+                adj.Add(new List<int>(2));
+
+            for (int ei = 0; ei < edges.Count; ei++)
+            {
+                adj[edges[ei].n0].Add(ei);
+                adj[edges[ei].n1].Add(ei);
+            }
+
+            // Deterministic start node: lowest Z (Y), then lowest X
+            int startNode = 0;
+            for (int i = 1; i < nodes.Count; i++)
+            {
+                var a = nodes[i];
+                var b = nodes[startNode];
+
+                if (a.Y < b.Y - 1e-12) startNode = i;
+                else if (Math.Abs(a.Y - b.Y) <= 1e-12 && a.X < b.X - 1e-12) startNode = i;
+            }
+
+            // Traverse the loop
+            var usedEdge = new bool[edges.Count];
+
+            int curNode = startNode;
+            int prevNode = -1;
+
+            for (int step = 0; step < edges.Count; step++)
+            {
+                // pick next unused edge from curNode
+                int e0 = adj[curNode][0];
+                int e1 = adj[curNode][1];
+
+                int pickEdge = -1;
+
+                if (!usedEdge[e0] && !usedEdge[e1])
+                {
+                    // both available (first step only). Choose deterministic "next node":
+                    // pick the edge that leads to the node with lower (Z then X).
+                    int next0 = (edges[e0].n0 == curNode) ? edges[e0].n1 : edges[e0].n0;
+                    int next1 = (edges[e1].n0 == curNode) ? edges[e1].n1 : edges[e1].n0;
+
+                    Point p0 = nodes[next0];
+                    Point p1 = nodes[next1];
+
+                    bool chooseE0 = false;
+
+                    if (p0.Y < p1.Y - 1e-12) chooseE0 = true;
+                    else if (Math.Abs(p0.Y - p1.Y) <= 1e-12 && p0.X < p1.X - 1e-12) chooseE0 = true;
+
+                    pickEdge = chooseE0 ? e0 : e1;
+                }
+                else if (!usedEdge[e0])
+                {
+                    pickEdge = e0;
+                }
+                else if (!usedEdge[e1])
+                {
+                    pickEdge = e1;
+                }
+                else
+                {
+                    failPointWorld = nodes[curNode];
+                    maxEndpointGap = maxSnapDist;
+                    failReason = "Traversal failed: both incident edges already used.";
+                    return false;
+                }
+
+                usedEdge[pickEdge] = true;
+
+                var (seg, n0, n1) = edges[pickEdge];
+
+                // Orient so seg.Start is at curNode
+                if (n0 != curNode && n1 == curNode)
+                {
+                    // reverse the segment AND swap nodes so n0 always matches seg.Start node
+                    seg.ReverseInPlace();
+                    int t = n0; n0 = n1; n1 = t;
+                }
+
+                if (n0 != curNode)
+                {
+                    failPointWorld = nodes[curNode];
+                    maxEndpointGap = maxSnapDist;
+                    failReason = "Traversal failed: edge does not touch current node.";
+                    return false;
+                }
+
+                // Snap endpoints EXACTLY to node representative points
+                seg.SetStart(nodes[n0]);
+                seg.SetEnd(nodes[n1]);
+
+                ordered.Add(seg);
+
+                prevNode = curNode;
+                curNode = n1;
+            }
+
+            // Must end at start node for closed loop
+            if (curNode != startNode)
+            {
+                failPointWorld = nodes[curNode];
+                maxEndpointGap = maxSnapDist;
+                failReason = "Traversal ended at wrong node: loop not closed.";
                 return false;
             }
 
-            ordered[ordered.Count - 1].SetEnd(start);
+            // Compute max endpoint gap based on node snapping (this is the only real "gap" now)
+            maxEndpointGap = maxSnapDist;
             isClosed = true;
+
             return true;
         }
+
 
 
         // ============================================================
@@ -2226,6 +2519,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var outLines = new List<string>();
             var inv = CultureInfo.InvariantCulture;
 
+            // IMPORTANT:
+            // Save/Builder round-trip must not introduce endpoint gaps.
+            // Using "0.###" can create tiny mismatches after re-parse (and then the builder/freecad sew check trips).
+            // So we output higher precision everywhere.
+            const string F = "0.########"; // 8dp is plenty for mm-scale geometry
+
             if (ordered == null || ordered.Count == 0) return outLines;
 
             Point p0 = ordered[0].Start;
@@ -2233,8 +2532,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
             outLines.Add(string.Format(
                 inv,
                 "G1 X{0} Z{1}",
-                (p0.X * 2.0).ToString("0.###", inv),
-                p0.Y.ToString("0.###", inv)));
+                (p0.X * 2.0).ToString(F, inv),
+                p0.Y.ToString(F, inv)));
 
             for (int i = 0; i < ordered.Count; i++)
             {
@@ -2247,8 +2546,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     outLines.Add(string.Format(
                         inv,
                         "G1 X{0} Z{1}",
-                        (pe.X * 2.0).ToString("0.###", inv),
-                        pe.Y.ToString("0.###", inv)));
+                        (pe.X * 2.0).ToString(F, inv),
+                        pe.Y.ToString(F, inv)));
                 }
                 else if (s is EditArcSeg a)
                 {
@@ -2258,8 +2557,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     double r = a.Radius;
                     if (r < 1e-9) continue;
 
-                    double I = a.C.X - ps.X; // radius units
-                    double K = a.C.Y - ps.Y;
+                    // X is DIAMETER in output => I must be in diameter-units too
+                    double I = (a.C.X - ps.X) * 2.0;
+                    double K = (a.C.Y - ps.Y);
 
                     string g = a.CCW ? "G3" : "G2";
 
@@ -2267,10 +2567,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
                         inv,
                         "{0} X{1} Z{2} I{3} K{4}",
                         g,
-                        (pe.X * 2.0).ToString("0.###", inv),
-                        pe.Y.ToString("0.###", inv),
-                        I.ToString("0.###", inv),
-                        K.ToString("0.###", inv)));
+                        (pe.X * 2.0).ToString(F, inv),
+                        pe.Y.ToString(F, inv),
+                        I.ToString(F, inv),
+                        K.ToString(F, inv)));
                 }
                 else
                 {
@@ -2280,6 +2580,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             return outLines;
         }
+
+
 
         //===========++++
         // ============================================================
@@ -2387,7 +2689,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 Title = "Add Line",
                 Width = 360,
                 Height = 150,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.Manual,
                 ResizeMode = ResizeMode.NoResize,
                 Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)),
                 Owner = ownerW
@@ -2607,6 +2909,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             w.Loaded += (_, __) =>
             {
+                PositionDialogBottomRight(w, ownerW, 16.0);
                 txtX.Focus();
                 txtX.SelectAll();
             };
@@ -3128,6 +3431,44 @@ namespace CNC_Improvements_gcode_solids.Utilities
         }
 
 
+        // Place a dialog window at the bottom-right of its owner (with a small margin).
+        private static void PositionDialogBottomRight(Window dlg, Window? owner, double marginPx = 16.0)
+        {
+            try
+            {
+                if (dlg == null) return;
+
+                // If no owner, use the main window if available.
+                owner ??= Application.Current?.MainWindow;
+
+                if (owner == null) return;
+
+                // Ensure we have real sizes.
+                double ow = owner.ActualWidth;
+                double oh = owner.ActualHeight;
+
+                // Fallback if ActualWidth/Height not ready.
+                if (!TurnEditMath.IsFinite(ow) || ow <= 1) ow = owner.Width;
+                if (!TurnEditMath.IsFinite(oh) || oh <= 1) oh = owner.Height;
+
+                double dw = dlg.Width;
+                double dh = dlg.Height;
+
+                // Bottom-right inside owner
+                double left = owner.Left + ow - dw - marginPx;
+                double top = owner.Top + oh - dh - marginPx;
+
+                if (!TurnEditMath.IsFinite(left) || !TurnEditMath.IsFinite(top))
+                    return;
+
+                dlg.Left = left;
+                dlg.Top = top;
+            }
+            catch
+            {
+                // never crash because of positioning
+            }
+        }
 
 
 

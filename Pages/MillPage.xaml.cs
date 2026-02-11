@@ -900,6 +900,8 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (rtb == null || lines == null)
                 return;
 
+            UiUtilities.ForceLinesUppercaseInPlace(lines);
+
             rtb.Document.Blocks.Clear();
 
             int regionStart = MinNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);

@@ -86,6 +86,32 @@ namespace CNC_Improvements_gcode_solids.Utilities
             HardResetProjectState(mainWindow, newProjectNameForTitle, preserveFirstTransform: false);
         }
 
+
+
+        public static void ForceLinesUppercaseInPlace(IList<string> lines)
+        {
+            if (lines == null || lines.Count == 0)
+                return;
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string s = lines[i] ?? "";
+                string up = s.ToUpperInvariant();
+                if (!ReferenceEquals(s, up) && !string.Equals(s, up, StringComparison.Ordinal))
+                    lines[i] = up;
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
         private static void TryClearCollectionPropertyKeepingFirst(object target, string propName)
         {
             object? obj = TryGetProp(target, propName);
@@ -248,7 +274,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             CloseByType(typeof(LogWindow));
             CloseByType(typeof(MillViewWindow));
             CloseByType(typeof(DrillViewWindow));
-            CloseByType(typeof(ProfileViewWindow));
+            CloseByType(typeof(TurnViewWindow));
             CloseByType(typeof(TurnEditWindow));
             CloseByType(typeof(DrillViewWindowV2));
             CloseByType(typeof(ColorPickerWindow));

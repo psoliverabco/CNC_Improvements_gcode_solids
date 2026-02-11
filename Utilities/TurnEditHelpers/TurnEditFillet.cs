@@ -112,7 +112,7 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
                 Title = "Fillet Circles",
                 Width = 620,
                 Height = 260,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                WindowStartupLocation = WindowStartupLocation.Manual,
                 ResizeMode = ResizeMode.NoResize,
                 Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)),
                 Owner = Application.Current?.MainWindow
@@ -392,10 +392,43 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
 
             w.Loaded += (_, __) =>
             {
+                // Position bottom-right of owner (or work area), then do normal init.
+                try
+                {
+                    Rect wa = SystemParameters.WorkArea;
+
+                    Window? owner = w.Owner;
+                    double left, top;
+
+                    const double M = 12.0;
+
+                    if (owner != null)
+                    {
+                        left = owner.Left + owner.ActualWidth - w.ActualWidth - M;
+                        top = owner.Top + owner.ActualHeight - w.ActualHeight - M;
+                    }
+                    else
+                    {
+                        left = wa.Right - w.ActualWidth - M;
+                        top = wa.Bottom - w.ActualHeight - M;
+                    }
+
+                    // Clamp inside screen work area
+                    if (left < wa.Left) left = wa.Left;
+                    if (top < wa.Top) top = wa.Top;
+                    if (left + w.ActualWidth > wa.Right) left = wa.Right - w.ActualWidth;
+                    if (top + w.ActualHeight > wa.Bottom) top = wa.Bottom - w.ActualHeight;
+
+                    w.Left = left;
+                    w.Top = top;
+                }
+                catch { }
+
                 tbRad.Focus();
                 tbRad.SelectAll();
                 RecomputePreview();
             };
+
 
             w.ShowDialog();
 

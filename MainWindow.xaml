@@ -548,8 +548,9 @@
                  Grid.Row="0"
                  FontFamily="Consolas"
                  FontSize="14"
-                 PreviewTextInput="TxtGcode_PreviewTextInput"
+                 
                  DataObject.Pasting="TxtGcode_Pasting"
+                 
                  VerticalScrollBarVisibility="Auto"
                  AcceptsReturn="True"
                  AcceptsTab="True"
@@ -577,6 +578,7 @@
             Background="#FF007ACC"
             Foreground="White"
             Click="Btntesting"
+                            Visibility="Collapsed"
             FontSize="15"
             FontWeight="Bold"/>
 
