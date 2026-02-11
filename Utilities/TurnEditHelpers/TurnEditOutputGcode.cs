@@ -39,7 +39,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             var inv = CultureInfo.InvariantCulture;
 
             // Keep high precision to prevent gaps after re-parse.
-            const string F = "0.########";
+            const string F = "0.####";
 
             if (ordered == null || ordered.Count == 0) return outLines;
 
@@ -77,16 +77,20 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 double K = (s.C.Y - ps.Y);   // Z-units
 
                 string g = s.CCW ? "G3" : "G2";
-                outLines.Add(string.Format(inv, "{0} X{1} Z{2} I{3} K{4}",
+
+                // NEW: include R (radius) in output
+                outLines.Add(string.Format(inv, "{0} X{1} Z{2} I{3} K{4} R{5}",
                     g,
                     (peArc.X * 2.0).ToString(F, inv),
                     peArc.Y.ToString(F, inv),
                     I.ToString(F, inv),
-                    K.ToString(F, inv)));
+                    K.ToString(F, inv),
+                    r.ToString(F, inv)));
             }
 
             return outLines;
         }
+
 
         internal static string BuildSegDiagnosticsText(IReadOnlyList<Seg> ordered)
         {

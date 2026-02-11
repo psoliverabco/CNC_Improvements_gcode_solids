@@ -2642,7 +2642,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             bool endsWithNewline = existing.EndsWith("\n") || existing.EndsWith("\r\n");
             if (!endsWithNewline) rtb.AppendText("\r\n");
-
+            rtb.AppendText("");
+            
             rtb.AppendText(block);
             rtb.AppendText("\r\n");
             rtb.ScrollToEnd();

@@ -521,7 +521,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private void SyncToggleButtonText()
         {
             if (BtnToggleLabels != null)
-                BtnToggleLabels.Content = _showLabels ? "Labels: ON" : "Labels: OFF";
+                BtnToggleLabels.Content = _showLabels ? "Labels: OFF" : "Labels: ON";
 
             if (BtnToggleCL != null)
                 BtnToggleCL.Content = _showCL ? "CL: ON" : "CL: OFF";

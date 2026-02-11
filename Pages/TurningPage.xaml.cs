@@ -1602,8 +1602,8 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 string raw = regionLines[local];
                 string line = (raw ?? "").ToUpperInvariant().Trim();
 
-                if (line.Contains("G0 ") || line.Contains("G00"))
-                    throw new Exception($"ERROR: G00 rapid move found inside region at line {absIndex + 1}.");
+              //  if (line.Contains("G0 ") || line.Contains("G00"))
+                  //  throw new Exception($"ERROR: G00 rapid move found inside region at line {absIndex + 1}.");
 
                 if (line.Contains("G1") || line.Contains("G01")) mode = MotionMode.G1;
                 if (line.Contains("G2") || line.Contains("G02")) mode = MotionMode.G2;
@@ -2346,7 +2346,8 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 {
                     string nm = set?.Name ?? "(null)";
                     // USER-FACING message (exact phrasing you asked for)
-                    invalidRegions.Add($"Region \"{nm}\" is invalid...remove from view all or correct.");
+                    //invalidRegions.Add($"Region \"{nm}\" is invalid...remove from view all or correct.");
+                    invalidRegions.Add($"Region \"{nm}\" invalid: {oneEx.Message}");
 
                     // Keep detailed reason for log/script
                     errors.Add($"{nm}: {oneEx.Message}");

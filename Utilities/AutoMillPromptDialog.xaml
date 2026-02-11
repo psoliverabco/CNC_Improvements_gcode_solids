@@ -1,0 +1,69 @@
+﻿<!-- File: Utilities/AutoMillPromptDialog.xaml -->
+<Window x:Class="CNC_Improvements_gcode_solids.Utilities.AutoMillPromptDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Auto Mill Reg"
+        Width="520"
+        Height="210"
+        WindowStartupLocation="Manual"
+        ResizeMode="NoResize"
+        Background="#222">
+    <Grid x:Name="Root" Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="90"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Base name row -->
+        <TextBlock x:Name="LblBaseName"
+                   Grid.Row="0" Grid.Column="0"
+                   Text="Name:"
+                   Width="80"
+                   VerticalAlignment="Center"
+                   Margin="0,0,10,10"/>
+        <TextBox x:Name="TxtBaseName"
+                 Grid.Row="0" Grid.Column="1"
+                 Margin="0,0,0,10"
+                 FontFamily="Consolas"
+                 FontSize="14"/>
+
+        <!-- Tool dia row (hidden for TURN) -->
+        <TextBlock x:Name="LblToolDia"
+                   Grid.Row="1" Grid.Column="0"
+                   Text="Tool:"
+                   Width="80"
+                   VerticalAlignment="Center"
+                   Margin="0,0,10,10"/>
+        <TextBox x:Name="TxtToolDia"
+                 Grid.Row="1" Grid.Column="1"
+                 Margin="0,0,0,10"
+                 FontFamily="Consolas"
+                 FontSize="14"/>
+
+        <!-- Buttons -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnOk" Content="OK" Width="120" Margin="0,0,10,0" Click="BtnOk_Click"/>
+                <Button x:Name="BtnCancel" Content="Cancel" Width="120" Click="BtnCancel_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Hint -->
+        <TextBlock x:Name="TxtHint"
+                   Grid.Row="3" Grid.ColumnSpan="2"
+                   Text="Tip: Name becomes &quot;Name (1)&quot;, &quot;Name (2)&quot;, etc."
+                   Opacity="0.9"/>
+    </Grid>
+</Window>

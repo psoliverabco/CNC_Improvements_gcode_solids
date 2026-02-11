@@ -988,8 +988,8 @@ namespace CNC_Improvements_gcode_solids.Utilities.TurnEditHelpers
             Brush gridBrush = BrushFromHex(Settings.Default.GridColor, Brushes.Gray);
 
             // subtle grid
-            double opacityMinor = 0.30;
-            double opacityMajor = 0.55;
+            double opacityMinor = gridBrush.Opacity * 0.60;
+            double opacityMajor = gridBrush.Opacity;
 
             // ---- thickness should be constant in *screen pixels* (not scaled by zoom) ----
             double zoom = Math.Max(1e-9, _scale.ScaleX);

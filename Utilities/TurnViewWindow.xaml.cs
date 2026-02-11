@@ -449,13 +449,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
 
 
-        private static bool IsClosedPath(List<Point> pts, double eps = 1e-6)
-        {
-            if (pts == null || pts.Count < 3)
-                return false;
+       
 
-            return AreClose(pts[0], pts[pts.Count - 1], eps);
-        }
 
 
 
@@ -583,7 +578,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // - at finalize, CHAIN them by endpoint matching into one loop
             // - fill that ordered loop
             // ------------------------------------------------------------
-            const double JOIN_EPS = 1e-3;
+            // Use SAME tolerance rule as editor: SewTol * 0.5
+            double joinEps = CNC_Improvements_gcode_solids.Properties.Settings.Default.SewTol * 0.5;
+            if (joinEps < 1e-6) joinEps = 1e-6;
 
             bool regionOpen = false;
             var regionSegs = new List<List<Point>>(); // each entry is a segment polyline (already transformed)

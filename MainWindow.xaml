@@ -566,41 +566,20 @@
 
                 <UniformGrid Grid.Row="1"
              Rows="1"
-             Columns="9"
+             Columns="7"
              Margin="0,1,0,0">
-
-
-                    <Button x:Name="test"
-            Content="tttt"
-            Height="35"
-                  Padding="0"        
-            Margin="0,28,5,0"
-            Background="#FF007ACC"
-            Foreground="White"
-            Click="Btntesting"
-                            Visibility="Collapsed"
-            FontSize="15"
-            FontWeight="Bold"/>
-
-
-
 
                     <Button x:Name="CodeClean"
             Content="Code Cleen"
             Height="35"
-                  Padding="0"        
+            Padding="0"
             Margin="0,28,5,0"
             Background="#FF007ACC"
             Foreground="White"
             Click="BtnCodeClean_Click"
             FontSize="15"
             FontWeight="Bold"/>
-                    
-                    
-                    
-                    
-                    
-                    
+
                     <Button x:Name="FaptConvert"
             Content="Fapt Cnvt"
             Height="35"
@@ -610,78 +589,93 @@
             Click="BtnFapt"
             FontSize="15"
             FontWeight="Bold"/>
+                    <Button x:Name="AutoTurn"
+            Content="Auto Turn"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            FontSize="15"
+            FontWeight="Bold"
+            Click="BtnAutoTurn"/>
 
-                    <Button x:Name="LineSplitter"
-            Content="Split Line"
+                    <Button x:Name="AutoMill"
+            Content="Auto Mill"
             Height="35"
             Margin="0,28,5,0"
             Background="#FF007ACC"
             Foreground="White"
-            Click="BtnSplitLine"
             FontSize="15"
-            FontWeight="Bold"/>
+            FontWeight="Bold"
+            Click="BtnAutoMill"/>
 
-                    <Button x:Name="ArcSplitter"
-            Content="Split Arc"
+                    <Button x:Name="AutoDrill"
+            Content="Auto Drill"
             Height="35"
             Margin="0,28,5,0"
             Background="#FF007ACC"
             Foreground="White"
-            Click="BtnSplitArc"
             FontSize="15"
-            FontWeight="Bold"/>
+            FontWeight="Bold"
+            Click="BtnAutoDrill"/>
 
-                    <Button x:Name="Xadd"
-            Content="Add To X"
-            Height="35"
-            Margin="0,28,5,0"
-            Background="#FF007ACC"
-            Foreground="White"
-            Click="BtnXadd"
-            FontSize="15"
-            FontWeight="Bold"/>
-
-                    <Button x:Name="Yadd"
-            Content="Add To Y"
-            Height="35"
-            Margin="0,28,5,0"
-            Background="#FF007ACC"
-            Foreground="White"
-            Click="BtnYadd"
-            FontSize="15"
-            FontWeight="Bold"/>
-
-                    <Button x:Name="Zadd"
-            Content="Add To Z"
-            Height="35"
-            Margin="0,28,5,0"
-            Background="#FF007ACC"
-            Foreground="White"
-            Click="BtnZadd"
-            FontSize="15"
-            FontWeight="Bold"/>
-                    
-                    <Button x:Name="ArcFields"
-            Content="Arc IJK"
-            Height="35"
-            Margin="0,28,5,0"
-            Background="#FF007ACC"
-            Foreground="White"
-            FontSize="15"
-            FontWeight="Bold" Click="BtnArcFields"/>
                     <Button x:Name="Join"
-                            
             Content="Reg Join"
             Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            FontSize="15"
+            FontWeight="Bold"
+            Click="BtnRegionJoin"/>
+
+
+                    <!-- DROPDOWN GROUP: Split/Add/Arc tools -->
+                    <Button x:Name="EditorTools"
+            Content="Editor Tools ▼"
+            Height="35"
+            Margin="0,28,5,0"
+            Background="#FF007ACC"
+            Foreground="White"
+            FontSize="15"
+            FontWeight="Bold"
+            Click="EditorTools_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu Placement="Top">
+
+                                <MenuItem Header="Split Line" Click="BtnSplitLine"/>
+                                <MenuItem Header="Split Arc" Click="BtnSplitArc"/>
+
+                                <Separator/>
+
+                                <MenuItem Header="Add To X" Click="BtnXadd"/>
+                                <MenuItem Header="Add To Y" Click="BtnYadd"/>
+                                <MenuItem Header="Add To Z" Click="BtnZadd"/>
+
+                                <Separator/>
+
+                                <MenuItem Header="Arc IJK" Click="BtnArcFields"/>
+
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+
+                    
+
+                    <Button x:Name="test"
+            Content="Reg Sets Diag"
+            Height="35"
+            Padding="0"
             Margin="0,28,0,0"
             Background="#FF007ACC"
             Foreground="White"
+            Click="Btntesting"
+            Visibility="Visible"
             FontSize="15"
-            FontWeight="Bold" Click="BtnRegionJoin"/>
+            FontWeight="Bold"/>
 
-
-                    
                 </UniformGrid>
+
 
 
 

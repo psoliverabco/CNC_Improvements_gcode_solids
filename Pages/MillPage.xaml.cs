@@ -1010,47 +1010,54 @@ namespace CNC_Improvements_gcode_solids.Pages
         /// Treats G0/G00 as G1 (so rapids behave like feed moves for geometry).
         /// Returns true if found, and outputs gMotion = 1/2/3.
         /// </summary>
-        private bool TryGetLastMotionGCode(string line, out int gMotion)
+        private bool TryGetLastMotionGCode(string line, out int g)
         {
-            gMotion = -1;
-
+            g = -1;
             if (string.IsNullOrWhiteSpace(line))
                 return false;
 
-            string s = line.ToUpperInvariant();
-            int idx = 0;
+            // 1) Strip line-number prefix + any parenthesis blocks.
+            //    CRITICAL: this must remove tags like "(M:G0002)" so they cannot be parsed as motion.
+            string s = line;
 
-            while (true)
-            {
-                idx = s.IndexOf('G', idx);
-                if (idx < 0)
-                    break;
+            // Remove optional "1234:" prefix (same rule you use elsewhere)
+            // Keep it simple: if colon is early, strip.
+            int colonIndex = s.IndexOf(':');
+            if (colonIndex >= 0 && colonIndex < 10)
+                s = s.Substring(colonIndex + 1);
 
-                int start = idx + 1;
-                int end = start;
+            // Remove ALL "(...)" blocks (repeat-safe)
+            // This kills: (M:G0002) (u:a0001) comments, etc.
+            s = Regex.Replace(s, @"\([^)]*\)", " ");
 
-                while (end < s.Length && char.IsDigit(s[end]))
-                    end++;
+            s = (s ?? "").ToUpperInvariant();
 
-                if (end > start)
-                {
-                    string numStr = s.Substring(start, end - start);
+            // 2) Find LAST valid motion token:
+            //    Accept ONLY: G0/G00/G1/G01/G2/G02/G3/G03
+            //    Reject: G0002, G1206, G17, G40, etc.
+            //    (?!\d) ensures the token ends there (no extra digits)
+            MatchCollection ms = Regex.Matches(s, @"G(?:0?[0-3])(?!\d)");
+            if (ms == null || ms.Count == 0)
+                return false;
 
-                    if (int.TryParse(numStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int g))
-                    {
-                        // Treat G0/G00 as G1
-                        if (g == 0) g = 1;
+            string tok = ms[ms.Count - 1].Value; // last motion token on line
 
-                        if (g == 1 || g == 2 || g == 3)
-                            gMotion = g;
-                    }
-                }
+            int motion;
+            if (tok.Length == 2) // "G2"
+                motion = tok[1] - '0';
+            else                 // "G02"
+                motion = tok[2] - '0';
 
-                idx = end;
-            }
+            // 3) REQUIRED BEHAVIOR: treat G0/G00 as G1 (rapids behave like feed for geometry)
+            if (motion == 0)
+                motion = 1;
 
-            return gMotion >= 0;
+            g = motion; // 1/2/3 only
+            return true;
         }
+
+
+
 
 
         // -------------------------
@@ -1153,11 +1160,15 @@ namespace CNC_Improvements_gcode_solids.Pages
             MotionMode mode = MotionMode.None;
             for (int i = regionStartIndex - 1; i >= 0; i--)
             {
-                if (TryGetLastMotionGCode(allLines[i], out int g))
-                {
-                    //if (g == 0)
-                    //  throw new Exception($"ERROR: Selected region begins under modal G00 (rapid). Last motion before region is G00 at line {i + 1}.");
+                // FIX: strip (M:....) etc BEFORE modal scan
+                string pre = allLines[i] ?? "";
+                pre = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.StripLineNumberPrefixAndParenComments(pre);
+                pre = pre.ToUpperInvariant().Trim();
 
+                if (TryGetLastMotionGCode(pre, out int g))
+                {
+                    // KEEP EXISTING BEHAVIOR: treat G0 as G1 (no G0 mode introduced)
+                    // (your original code: g==1 => G1, g==2 => G2, else => G3)
                     mode = (g == 1) ? MotionMode.G1
                          : (g == 2) ? MotionMode.G2
                          : MotionMode.G3;
@@ -1170,16 +1181,17 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             for (int k = 0; k < regionLines.Count; k++)
             {
-                string raw = regionLines[k];
-                string line = raw.ToUpperInvariant().Trim();
+                string raw = regionLines[k] ?? "";
+
+                // FIX: strip (M:....) etc BEFORE parsing this line
+                string line = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.StripLineNumberPrefixAndParenComments(raw);
+                line = line.ToUpperInvariant().Trim();
 
                 int physicalIndex = regionStartIndex + k;
 
-                // if (TryGetLastMotionGCode(line, out int gHere) && gHere == 0)
-                // throw new Exception($"ERROR: G00 rapid move found inside selected region at line {physicalIndex + 1}.");
-
                 if (TryGetLastMotionGCode(line, out int gMotion))
                 {
+                    // KEEP EXISTING BEHAVIOR: if G0 or G1 => mode = G1
                     if (gMotion == 1 || gMotion == 0) mode = MotionMode.G1;
                     else if (gMotion == 2) mode = MotionMode.G2;
                     else if (gMotion == 3) mode = MotionMode.G3;
@@ -1269,6 +1281,8 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             return moves;
         }
+
+
 
 
         private void GetArc3Points2D(

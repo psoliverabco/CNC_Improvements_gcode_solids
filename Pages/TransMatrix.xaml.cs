@@ -104,6 +104,30 @@ namespace CNC_Improvements_gcode_solids.Pages
             DefaultMatrix = TransformMatrixVm.CreateDefaultLocked();
             Matrices.Add(DefaultMatrix);
 
+            // ------------------------------------------------------------
+            // DEFAULT #2 (editable): Flip and Z shift (side2)
+            // RotY=180, Z=-45
+            // MUST exist even for brand-new projects (dtos null/empty)
+            // ------------------------------------------------------------
+            if (!Matrices.Any(m => string.Equals(m.MatrixName?.Trim(),
+                                                "Flip and Z shift (side2)",
+                                                StringComparison.OrdinalIgnoreCase)))
+            {
+                var side2 = new TransformMatrixVm
+                {
+                    MatrixName = "Flip and Z shift (side2)",
+                    RotY = "180",
+                    RotZ = "0",
+                    Tx = "0",
+                    Ty = "0",
+                    Tz = "-45",
+                    IsLocked = false
+                };
+
+                side2.Regions.Clear(); // user assigns regions
+                Matrices.Add(side2);
+            }
+
             if (dtos == null || dtos.Count == 0)
             {
                 SelectedMatrix = DefaultMatrix;
@@ -136,13 +160,15 @@ namespace CNC_Improvements_gcode_solids.Pages
                 }
             }
 
-            // Import the rest, skipping anything default-like
+            // Import the rest, skipping anything default-like and skipping side2 if present in saved files
             foreach (var d in dtos)
             {
                 if (d == null) continue;
                 if (IsDefaultDto(d)) continue;
 
                 string nm = (d.MatrixName ?? "").Trim();
+                if (nm.Equals("Flip and Z shift (side2)", StringComparison.OrdinalIgnoreCase))
+                    continue;
 
                 var vm = new TransformMatrixVm
                 {
@@ -152,8 +178,6 @@ namespace CNC_Improvements_gcode_solids.Pages
                     Tx = d.Tx ?? "0",
                     Ty = d.Ty ?? "0",
                     Tz = d.Tz ?? "0",
-
-                    // Never import locked non-defaults (avoid creating undeletable junk)
                     IsLocked = false
                 };
 
@@ -174,6 +198,7 @@ namespace CNC_Improvements_gcode_solids.Pages
             SelectedMatrix = DefaultMatrix;
             ApplySelectedToCard();
         }
+
 
         // ------------------------------------------------------------
         // Refresh from MainWindow region sets

@@ -375,20 +375,13 @@ namespace CNC_Improvements_gcode_solids.Utilities
             return RxAnyParenBlock.Replace(s, "");
         }
 
-        // 0->a, 1->b ... 25->z, 26->aa ...
+        // 0->a, 1->b ... 25->z, 26->a ... (ROLL OVER, NOT excel-style aa/ab)
         private static string ToAlphaIndex(int index)
         {
             if (index < 0) index = 0;
-            var sb = new StringBuilder(8);
-            int n = index;
-            while (true)
-            {
-                int rem = n % 26;
-                sb.Insert(0, (char)('a' + rem));
-                n = (n / 26) - 1;
-                if (n < 0) break;
-            }
-            return sb.ToString();
+            index %= 26; // roll over after z
+            return ((char)('a' + index)).ToString();
         }
+
     }
 }

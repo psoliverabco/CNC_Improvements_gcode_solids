@@ -22,8 +22,12 @@ using System.Windows.Navigation;
 using System.Windows.Threading;
 using System.Windows.Input;   // KeyEventArgs, Key, Keyboard, ModifierKeys
 using System.Globalization;    // if not already present (for CultureInfo)
-
-
+using System.Windows.Controls.Primitives;
+using System.Windows.Controls;
+using System.Windows;
+using System.Windows.Documents;
+using System.Windows.Controls;
+using System.Text.RegularExpressions;
 
 namespace CNC_Improvements_gcode_solids
 {
@@ -163,7 +167,17 @@ namespace CNC_Improvements_gcode_solids
         }
 
 
+        private void EditorTools_Click(object sender, RoutedEventArgs e)
+        {
+            if (EditorTools?.ContextMenu == null) return;
 
+            var cm = EditorTools.ContextMenu;
+            cm.PlacementTarget = EditorTools;
+            cm.Placement = PlacementMode.Top;   // open upward so it stays visible at bottom of window
+            cm.HorizontalOffset = 0;
+            cm.VerticalOffset = 0;
+            cm.IsOpen = true;
+        }
 
 
         public string SelectedSetLabel
@@ -5541,120 +5555,596 @@ namespace CNC_Improvements_gcode_solids
 
 
 
+        
 
 
+       
 
 
+        // File: (wherever this handler lives, e.g. TurnEditWindow.xaml.cs / MainWindow.xaml.cs)
+        // Method: BtnAutoMill
+        // Change: Make the (M:x0000) alpha+number MODULAR (wrap Z->A and 9999->0000).
+        //         We IGNORE whatever AutoMillRegion generated for the tag letter, and we
+        //         re-tag ALL produced region lines using the next available tag in the FULL RTB text.
 
-        // Add this inside MainWindow class
-        // Uses the canonical builders.
-        // Feeds RAW lines + marker indices/fields.
-        // Builders generate UID, normalize, build anchored RegionLines, and store anchored marker snapshot strings.
-        private void Build3TestRegions_Static()
+        private void BtnAutoMill(object sender, RoutedEventArgs e)
         {
-            if (TurnSets == null || MillSets == null || DrillSets == null)
-                throw new Exception("TurnSets/MillSets/DrillSets is null.");
+            if (TxtGcode == null || TxtGcode.Document == null)
+            {
+                MessageBox.Show("No editor document.", "Auto Mill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            TurnSets.Clear();
-            MillSets.Clear();
-            DrillSets.Clear();
+            // Capture selection FIRST (dialogs can visually clear selection)
+            string selected = new TextRange(TxtGcode.Selection.Start, TxtGcode.Selection.End).Text ?? "";
+            selected = selected.Trim();
 
-            // =========================
-            // DRILL (depth line index = 3)
-            // =========================
-            var drillLines = new List<string>
-    {
-        "991: G0X39.5Y0.                                                                 (u:c0237)",
-        "992: G0Z20.                                                                     (u:c0238)",
-        "993: G99                                                                        (u:c0239)",
-        "994: G81Z-77.8R-29.F1000.                                                       (u:c0240)", // zdepth marker
-        "995: X19.75Y34.208                                                              (u:c0241)", // holes
-        "996: X-19.75Y34.208                                                             (u:c0242)",
-        "997: X-39.5Y0.                                                                  (u:c0243)",
-        "998: X-19.75Y-34.208                                                            (u:c0244)",
-        "999: X19.75Y-34.208                                                             (u:c0245)"
-    };
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                MessageBox.Show("Highlight a MILL text region first, then click Auto Mill Reg.", "Auto Mill Reg",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
 
-            var drillSet = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.Create(
-                regionName: "TEST_DRILL",
-                regionLines: drillLines,
-                drillDepthIndex: 3,
-                coordMode: "Cartesian",
-                txtChamfer: "1",
-                txtHoleDia: "12",
-                txtPointAngle: "118",
-                txtZHoleTop: "-32",
-                txtZPlusExt: "5",
-                snapshotDefaults: null
-            );
+            // Full RTB text (AutoMillRegion uses this to pick next available alpha)
+            string fullText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
 
-            DrillSets.Add(drillSet);
+            // IMPORTANT: declare these BEFORE Show(...) (older language versions)
+            string baseName;
+            double toolDia;
 
-            // =========================
-            // MILL
-            // planeZ index = 0
-            // start X/Y index = 1
-            // end X/Y index = 4
-            // =========================
-            var millLines = new List<string>
-    {
-        "1576: G1Z-14.F500.                                                               (u:c0822)", // zplane
-        "1577: G1X194.303Y0.F1100.                                                        (u:c0823)", // start
-        "1578: G2X194.298Y-1.477I-194.303J0.F1100.                                        (u:c0824)",
-        "1579: G2X167.622Y-35.442I-35.302J0.268F1100.                                     (u:c0825)",
-        "1580: G2X161.123Y-36.941I-40.395J160.292F1100.                                   (u:c0826)" // end
-    };
+            // Prompt: base name + tool dia
+            if (!AutoMillPromptDialog.Show(this, out baseName, out toolDia))
+                return;
 
-            var millSet = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildMillRegion.Create(
-                regionName: "TEST_MILL",
-                regionLines: millLines,
-                planeZIndex: 0,
-                startXIndex: 1,
-                startYIndex: 1,
-                endXIndex: 4,
-                endYIndex: 4,
-                txtToolDia: "10",
-                txtToolLen: "75",
-                fuseAll: "1",
-                removeSplitter: "1",
-                clipper: "1",
-                clipperIsland: "0",
-                snapshotDefaults: null
-            );
+            if (!CNC_Improvements_gcode_solids.Utilities.AutoMillRegion.TryBuildRegionsTextFromSelection(
+                    selectedText: selected,
+                    fullRtbText: fullText,
+                    baseName: baseName,
+                    regionsText: out var regionsText,
+                    regionBlocks: out var blocks,
+                    userMessage: out var msg))
+            {
+                MessageBox.Show(msg, "Auto Mill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            MillSets.Add(millSet);
+            if (blocks == null || blocks.Count == 0)
+            {
+                MessageBox.Show("No regions were produced.", "Auto Mill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            // =========================
-            // TURN
-            // start X/Z index = 0
-            // end X/Z index = 4
-            // =========================
-            var turnLines = new List<string>
-    {
-        "383: G1X334.6576Z-2.4477F0.2                                                    (u:a0382)", // start
-        "384: G1X337.5Z-3.9872F0.2                                                       (u:a0383)",
-        "385: G1X337.5Z-14.5007F0.2                                                      (u:a0384)",
-        "386: G3X340.9496Z-16.I-0.05K-1.7993F0.2                                         (u:a0385)",
-        "387: G1X360.Z-16.F0.2                                                           (u:a0386)"  // end
-    };
+            // Helper: find marker indices in the regionLines (these are the lines BETWEEN ST/END)
+            void PickMillMarkerIndices(List<string> regionLines,
+                out int planeZIndex,
+                out int startXIndex,
+                out int startYIndex,
+                out int endXIndex,
+                out int endYIndex)
+            {
+                planeZIndex = -1;
+                startXIndex = -1;
+                startYIndex = -1;
+                endXIndex = -1;
+                endYIndex = -1;
 
-            var turnSet = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildTurnRegion.Create(
-                regionName: "TEST_TURN",
-                regionLines: turnLines,
-                startXIndex: 0,
-                startZIndex: 0,
-                endXIndex: 4,
-                endZIndex: 4,
-                toolUsage: "RIGHT",
-                quadrant: "3",
-                txtZExt: "-100",
-                nRad: "0.8",
-                snapshotDefaults: null
-            );
+                if (regionLines == null || regionLines.Count == 0)
+                    return;
 
-            TurnSets.Add(turnSet);
+                // AutoMillRegion always emits first inner line as plane Z line
+                planeZIndex = 0;
+
+                // first X/Y occurrence for starts
+                for (int i = 0; i < regionLines.Count; i++)
+                {
+                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (startXIndex < 0 && u.Contains("X")) startXIndex = i;
+                    if (startYIndex < 0 && u.Contains("Y")) startYIndex = i;
+
+                    if (startXIndex >= 0 && startYIndex >= 0)
+                        break;
+                }
+
+                // last X/Y occurrence for ends
+                for (int i = regionLines.Count - 1; i >= 0; i--)
+                {
+                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (endXIndex < 0 && u.Contains("X")) endXIndex = i;
+                    if (endYIndex < 0 && u.Contains("Y")) endYIndex = i;
+
+                    if (endXIndex >= 0 && endYIndex >= 0)
+                        break;
+                }
+            }
+
+            // Build/store MILL RegionSets using the builder
+            var insertsToAppend = new List<string>();
+
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var block = blocks[bi];
+                if (block == null || block.Count < 3)
+                    continue;
+
+                string regionName = $"{baseName} ({bi + 1})";
+
+                // Take inner lines only (skip ST + END) — AutoMillRegion already tagged them
+                var regionLines = new List<string>();
+                for (int i = 1; i < block.Count - 1; i++)
+                {
+                    string s = block[i] ?? "";
+                    if (!string.IsNullOrWhiteSpace(s))
+                        regionLines.Add(s);
+                }
+
+                if (regionLines.Count == 0)
+                    continue;
+
+                PickMillMarkerIndices(regionLines,
+                    out int planeZIndex,
+                    out int startXIndex,
+                    out int startYIndex,
+                    out int endXIndex,
+                    out int endYIndex);
+
+                // Create the set (this stores UID/n anchors + snapshot markers)
+                var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildMillRegion.Create(
+                    regionName: regionName,
+                    regionLines: regionLines,
+                    planeZIndex: planeZIndex,
+                    startXIndex: startXIndex,
+                    startYIndex: startYIndex,
+                    endXIndex: endXIndex,
+                    endYIndex: endYIndex,
+                    txtToolDia: toolDia.ToString("0.###", CultureInfo.InvariantCulture),
+                    txtToolLen: "75",
+                    fuseAll: "0",
+                    removeSplitter: "1",
+                    clipper: "1",
+                    clipperIsland: "1",
+                    guidedTool: "1",
+                    closedWire: "0",
+                    closedInner: "1",
+                    closedOuter: "0",
+                    snapshotDefaults: null
+                );
+
+                rs.ExportEnabled = false;
+                rs.ShowInViewAll = true;
+
+                MillSets.Add(rs);
+
+                // Build RTB insert from the *stored* region lines (same pattern as FAPT)
+                insertsToAppend.Add("(" + rs.Name + " ST)");
+                for (int i = 0; i < rs.RegionLines.Count; i++)
+                {
+                    string stored = rs.RegionLines[i] ?? "";
+                    string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                    string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                    if (!string.IsNullOrWhiteSpace(aligned))
+                        insertsToAppend.Add(aligned);
+                }
+                insertsToAppend.Add("(" + rs.Name + " END)");
+                insertsToAppend.Add("");
+            }
+
+            if (insertsToAppend.Count == 0)
+            {
+                MessageBox.Show("No MILL sets were created.", "Auto Mill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Append the BUILT+STORED version to RTB
+            {
+                string existingAll = fullText ?? "";
+                bool endsWithNewline = existingAll.EndsWith("\n") || existingAll.EndsWith("\r");
+
+                string prefix = endsWithNewline ? "\n" : "\n\n";
+                string finalInsert = prefix + string.Join("\n", insertsToAppend) + "\n";
+
+                var end = TxtGcode.Document.ContentEnd;
+                new TextRange(end, end).Text = finalInsert;
+            }
+
+            // Log window: show selected + AutoMillRegion output (source of truth)
+            if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
+            {
+                var sb = new System.Text.StringBuilder();
+
+                sb.AppendLine("AUTO MILL REG");
+                sb.AppendLine();
+                sb.AppendLine($"Base name : {baseName}");
+                sb.AppendLine($"Tool dia  : {toolDia.ToString("0.###", CultureInfo.InvariantCulture)}");
+                sb.AppendLine();
+
+                sb.AppendLine("----- SELECTED TEXT -----");
+                sb.AppendLine(selected.TrimEnd());
+                sb.AppendLine();
+
+                sb.AppendLine("----- AUTO MILL OUTPUT (REGIONS CREATED) -----");
+                sb.AppendLine((regionsText ?? "").TrimEnd());
+
+                var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("AUTO MILL : OUTPUT", sb.ToString());
+                logWindow.Owner = this;
+                logWindow.Show();
+            }
         }
 
+
+        private void BtnAutoTurn(object sender, RoutedEventArgs e)
+        {
+            if (TxtGcode == null || TxtGcode.Document == null)
+            {
+                MessageBox.Show("No editor document.", "Auto Turn Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Capture selection FIRST (dialogs can visually clear selection)
+            string selected = new TextRange(TxtGcode.Selection.Start, TxtGcode.Selection.End).Text ?? "";
+            selected = selected.Trim();
+
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                MessageBox.Show("Highlight a TURN text region first, then click Auto Turn Reg.", "Auto Turn Reg",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Full RTB text (AutoTurnRegion uses this to pick next available alpha)
+            string fullText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
+
+            // Prompt: base name (TURN mode, tool removed)
+            string baseName;
+            if (!CNC_Improvements_gcode_solids.Utilities.AutoMillPromptDialog.ShowTurn(this, out baseName))
+                return;
+
+            if (!CNC_Improvements_gcode_solids.Utilities.AutoTurnRegion.TryBuildRegionsTextFromSelection(
+                    selectedText: selected,
+                    fullRtbText: fullText,
+                    baseName: baseName,
+                    regionsText: out var regionsText,
+                    regionBlocks: out var blocks,
+                    userMessage: out var msg))
+            {
+                MessageBox.Show(msg, "Auto Turn Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (blocks == null || blocks.Count == 0)
+            {
+                MessageBox.Show("No regions were produced.", "Auto Turn Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            void PickTurnMarkerIndices(
+                List<string> regionLines,
+                out int startXIndex,
+                out int startZIndex,
+                out int endXIndex,
+                out int endZIndex)
+            {
+                startXIndex = -1;
+                startZIndex = -1;
+                endXIndex = -1;
+                endZIndex = -1;
+
+                if (regionLines == null || regionLines.Count == 0)
+                    return;
+
+                for (int i = 0; i < regionLines.Count; i++)
+                {
+                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (startXIndex < 0 && u.Contains("X")) startXIndex = i;
+                    if (startZIndex < 0 && u.Contains("Z")) startZIndex = i;
+
+                    if (startXIndex >= 0 && startZIndex >= 0)
+                        break;
+                }
+
+                for (int i = regionLines.Count - 1; i >= 0; i--)
+                {
+                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    if (u.Length == 0) continue;
+
+                    if (endXIndex < 0 && u.Contains("X")) endXIndex = i;
+                    if (endZIndex < 0 && u.Contains("Z")) endZIndex = i;
+
+                    if (endXIndex >= 0 && endZIndex >= 0)
+                        break;
+                }
+
+                if (startXIndex < 0) startXIndex = 0;
+                if (startZIndex < 0) startZIndex = 0;
+                if (endXIndex < 0) endXIndex = regionLines.Count - 1;
+                if (endZIndex < 0) endZIndex = regionLines.Count - 1;
+            }
+
+            var insertsToAppend = new List<string>();
+
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var block = blocks[bi];
+                if (block == null || block.Count < 3)
+                    continue;
+
+                string regionName = $"{baseName} ({bi + 1})";
+
+                var regionLines = new List<string>();
+                for (int i = 1; i < block.Count - 1; i++)
+                {
+                    string s = block[i] ?? "";
+                    if (!string.IsNullOrWhiteSpace(s))
+                        regionLines.Add(s);
+                }
+
+                if (regionLines.Count == 0)
+                    continue;
+
+                PickTurnMarkerIndices(regionLines,
+                    out int startXIndex,
+                    out int startZIndex,
+                    out int endXIndex,
+                    out int endZIndex);
+
+                var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildTurnRegion.Edit(
+                    turnSets: TurnSets,
+                    regionName: regionName,
+                    regionLines: regionLines,
+                    startXIndex: startXIndex,
+                    startZIndex: startZIndex,
+                    endXIndex: endXIndex,
+                    endZIndex: endZIndex,
+                    toolUsage: "OFF",
+                    quadrant: "3",
+                    txtZExt: "-100",
+                    nRad: "0.8",
+                    snapshotDefaults: null
+                );
+
+                rs.ExportEnabled = false;
+                rs.ShowInViewAll = true;
+
+                //TurnSets.Add(rs);
+
+                insertsToAppend.Add("(" + rs.Name + " ST)");
+                for (int i = 0; i < rs.RegionLines.Count; i++)
+                {
+                    string stored = rs.RegionLines[i] ?? "";
+                    string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                    string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                    if (!string.IsNullOrWhiteSpace(aligned))
+                        insertsToAppend.Add(aligned);
+                }
+                insertsToAppend.Add("(" + rs.Name + " END)");
+                insertsToAppend.Add("");
+            }
+
+            if (insertsToAppend.Count == 0)
+            {
+                MessageBox.Show("No TURN sets were created.", "Auto Turn Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            {
+                string existingAll = fullText ?? "";
+                bool endsWithNewline = existingAll.EndsWith("\n") || existingAll.EndsWith("\r");
+
+                string prefix = endsWithNewline ? "\n" : "\n\n";
+                string finalInsert = prefix + string.Join("\n", insertsToAppend) + "\n";
+
+                var end = TxtGcode.Document.ContentEnd;
+                new TextRange(end, end).Text = finalInsert;
+            }
+
+            if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
+            {
+                var sb = new System.Text.StringBuilder();
+
+                sb.AppendLine("AUTO TURN REG");
+                sb.AppendLine();
+                sb.AppendLine($"Base name : {baseName}");
+                sb.AppendLine("Defaults  : toolUsage=OFF, quadrant=3, zExt=-100, noseRad=0.8");
+                sb.AppendLine();
+
+                sb.AppendLine("----- SELECTED TEXT -----");
+                sb.AppendLine(selected.TrimEnd());
+                sb.AppendLine();
+
+                sb.AppendLine("----- AUTO TURN OUTPUT (REGIONS CREATED) -----");
+                sb.AppendLine((regionsText ?? "").TrimEnd());
+
+                var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("AUTO TURN : OUTPUT", sb.ToString());
+                logWindow.Owner = this;
+                logWindow.Show();
+            }
+        }
+
+        private void BtnAutoDrill(object sender, RoutedEventArgs e)
+        {
+            if (TxtGcode == null || TxtGcode.Document == null)
+            {
+                MessageBox.Show("No editor document.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Capture selection FIRST (dialogs can visually clear selection)
+            string selected = new TextRange(TxtGcode.Selection.Start, TxtGcode.Selection.End).Text ?? "";
+            selected = selected.Trim();
+
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                MessageBox.Show("Highlight a DRILL text region first, then click Auto Drill Reg.", "Auto Drill Reg",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Full RTB text (AutoDrillRegion uses this to pick next available alpha)
+            string fullText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
+
+            string baseName;
+            double toolDia;
+
+            // REAL dialog in Utilities
+            if (!CNC_Improvements_gcode_solids.Utilities.AutoMillPromptDialog.ShowDrill(this, out baseName, out toolDia))
+                return;
+
+            if (!CNC_Improvements_gcode_solids.Utilities.AutoDrillRegion.TryBuildRegionsTextFromSelection(
+                    selectedText: selected,
+                    fullRtbText: fullText,
+                    baseName: baseName,
+                    regionsText: out var regionsText,
+                    regionBlocks: out var blocks,
+                    userMessage: out var msg))
+            {
+                MessageBox.Show(msg, "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (blocks == null || blocks.Count == 0)
+            {
+                MessageBox.Show("No regions were produced.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (DrillSets == null)
+            {
+                MessageBox.Show("DrillSets collection is null.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Regex for reading Z from the stored T line (T Z...)
+            var rxZ = new System.Text.RegularExpressions.Regex(@"(?i)Z\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+            var insertsToAppend = new List<string>();
+
+            for (int bi = 0; bi < blocks.Count; bi++)
+            {
+                var block = blocks[bi];
+                if (block == null || block.Count < 4)
+                    continue;
+
+                string regionName = $"{baseName} ({bi + 1})";
+
+                // Take inner lines only (skip ST + END)
+                var regionLines = new List<string>();
+                for (int i = 1; i < block.Count - 1; i++)
+                {
+                    string s = block[i] ?? "";
+                    if (!string.IsNullOrWhiteSpace(s))
+                        regionLines.Add(s);
+                }
+
+                if (regionLines.Count < 3)
+                    continue;
+
+                // Drill depth line index is 0 (D Z...)
+                int drillDepthIndex = 0;
+
+                // Read ZHoleTop from the "T Z..." line (index 1)
+                string zHoleTop = "0";
+                {
+                    string tLine = regionLines[1] ?? "";
+                    var m = rxZ.Match(tLine);
+                    if (m.Success)
+                        zHoleTop = m.Groups[1].Value;
+                }
+
+                // Create the DRILL set (builder handles UID/n anchors + snapshot markers)
+                var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.Create(
+                    regionName: regionName,
+                    regionLines: regionLines,
+                    drillDepthIndex: drillDepthIndex,
+                    coordMode: "Cartesian",
+                    txtChamfer: "1",
+                    txtHoleDia: toolDia.ToString("0.###", CultureInfo.InvariantCulture),
+                    txtPointAngle: "118",
+                    txtZHoleTop: zHoleTop,
+                    txtZPlusExt: "5",
+                    snapshotDefaults: null
+                );
+
+                // IMPORTANT: DRILL builder does NOT insert into DrillSets in your current project pattern.
+                // So we add it here (but only if not already present).
+                if (!DrillSets.Contains(rs))
+                    DrillSets.Add(rs);
+
+                rs.ExportEnabled = false;
+                rs.ShowInViewAll = true;
+
+                // Store hole tokens as ANCHORED region lines (indices 2..end)
+                {
+                    var sbH = new StringBuilder(1024);
+                    for (int i = 2; i < rs.RegionLines.Count; i++)
+                    {
+                        string sLine = rs.RegionLines[i] ?? "";
+                        if (string.IsNullOrWhiteSpace(sLine)) continue;
+                        if (sbH.Length > 0) sbH.Append('\n');
+                        sbH.Append(sLine);
+                    }
+                    rs.PageSnapshot.Values["HoleLineTexts"] = sbH.ToString();
+                }
+
+                // Build RTB insert from the *stored* region lines
+                insertsToAppend.Add("(" + rs.Name + " ST)");
+                for (int i = 0; i < rs.RegionLines.Count; i++)
+                {
+                    string stored = rs.RegionLines[i] ?? "";
+                    string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                    string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                    if (!string.IsNullOrWhiteSpace(aligned))
+                        insertsToAppend.Add(aligned);
+                }
+                insertsToAppend.Add("(" + rs.Name + " END)");
+                insertsToAppend.Add("");
+            }
+
+            if (insertsToAppend.Count == 0)
+            {
+                MessageBox.Show("No DRILL sets were created.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Append the BUILT+STORED version to RTB
+            {
+                bool endsWithNewline = (fullText ?? "").EndsWith("\n") || (fullText ?? "").EndsWith("\r");
+                string prefix = endsWithNewline ? "\n" : "\n\n";
+                string finalInsert = prefix + string.Join("\n", insertsToAppend) + "\n";
+
+                var end = TxtGcode.Document.ContentEnd;
+                new TextRange(end, end).Text = finalInsert;
+            }
+
+            // Log window: show selected + AutoDrillRegion output (source of truth)
+            if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
+            {
+                var sb = new System.Text.StringBuilder();
+
+                sb.AppendLine("AUTO DRILL REG");
+                sb.AppendLine();
+                sb.AppendLine($"Base name : {baseName}");
+                sb.AppendLine($"Tool dia  : {toolDia.ToString("0.###", CultureInfo.InvariantCulture)}");
+                sb.AppendLine();
+
+                sb.AppendLine("----- SELECTED TEXT -----");
+                sb.AppendLine(selected.TrimEnd());
+                sb.AppendLine();
+
+                sb.AppendLine("----- AUTO DRILL OUTPUT (REGIONS CREATED) -----");
+                sb.AppendLine((regionsText ?? "").TrimEnd());
+
+                var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("AUTO DRILL : OUTPUT", sb.ToString());
+                logWindow.Owner = this;
+                logWindow.Show();
+            }
+        }
 
 
     }
