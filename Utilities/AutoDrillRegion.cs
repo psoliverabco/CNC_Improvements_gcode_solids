@@ -26,21 +26,32 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private static readonly Regex RxG8x = new Regex(@"(?i)(?:^|[^0-9A-Z])G8[1-9](?!\d)", RegexOptions.Compiled);
         private static readonly Regex RxG80 = new Regex(@"(?i)(?:^|[^0-9A-Z])G80(?!\d)", RegexOptions.Compiled);
 
+
+
+
+
         private sealed class CycleGroup
         {
-            public double DepthZ;
-            public double TopZ;
+            public double DepthZ;   // from cycle Z (drill depth)
+            public double RAbs;     // absolute R plane from cycle (or fallback rapid Z)
+            public double TopZ;     // TZ = RAbs - clearance
+            public bool HasR;       // true if cycle line had an R token
             public List<(double X, double Y)> Points = new List<(double X, double Y)>();
         }
 
         /// <summary>
         /// Pass highlighted text in; return the region text (ST..END blocks) that can be appended to RTB.
         /// Also returns blocks as list-of-lines.
+        ///
+        /// IMPORTANT (your rule):
+        /// - dialog value is CLEARANCE (machine parameter style, usually 3)
+        /// - TZ must be computed as: TZ = R - clearance
         /// </summary>
         public static bool TryBuildRegionsTextFromSelection(
             string selectedText,
             string fullRtbText,
             string baseName,
+            double rClearance,
             out string regionsText,
             out List<List<string>> regionBlocks,
             out string userMessage)
@@ -48,7 +59,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             regionsText = "";
             regionBlocks = new List<List<string>>();
             userMessage = "";
-
+            int tagIndex = 0;
             selectedText = selectedText ?? "";
             fullRtbText = fullRtbText ?? "";
             baseName = (baseName ?? "").Trim();
@@ -65,6 +76,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 return false;
             }
 
+            if (double.IsNaN(rClearance) || double.IsInfinity(rClearance))
+                rClearance = 0;
+
             var selLines = SplitLines(selectedText)
                 .Select(l => l.Trim())
                 .Where(l => !string.IsNullOrWhiteSpace(l))
@@ -80,7 +94,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             char curAlpha = FindNextAvailableAlpha(fullRtbText);
 
             // Extract drill cycle groups (each group = one G81..G89 series)
-            var groups = ExtractCycleGroups(selLines);
+            var groups = ExtractCycleGroups(selLines, rClearance);
 
             if (groups.Count == 0)
             {
@@ -108,17 +122,27 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var block = new List<string>();
                 block.Add($"({regionName} ST)");
 
-                int tagIndex = 0;
+              
 
                 // Canonical DRILL lines:
                 //  0: D Z<depth>
-                //  1: T Z<top>
+                //  1: T Z<top>   where top = (R - clearance)
                 //  2..:  X..Y..
                 {
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
+                    // keep your existing convention (whatever downstream expects)
                     string dLine = $"D Z{FormatNum(g.DepthZ)} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(dLine, ENDTAG_COLUMN));
                 }
                 {
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
+                    // THIS is the fix: TZ is derived (RAbs - clearance)
                     string tLine = $"T Z{FormatNum(g.TopZ)} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(tLine, ENDTAG_COLUMN));
                 }
@@ -127,6 +151,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                 for (int p = 0; p < g.Points.Count; p++)
                 {
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
                     var pt = g.Points[p];
                     string line = $" X{FormatNum(pt.X)}Y{FormatNum(pt.Y)} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(line, ENDTAG_COLUMN));
@@ -165,7 +193,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         // Cycle extraction
         // ----------------------------
 
-        private static List<CycleGroup> ExtractCycleGroups(List<string> selLines)
+        private static List<CycleGroup> ExtractCycleGroups(List<string> selLines, double rClearance)
         {
             var groups = new List<CycleGroup>();
 
@@ -176,7 +204,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
             bool inCycle = false;
             double curDepth = 0;
+            double curRAbs = 0;
             double curTop = 0;
+            bool curHasR = false;
             var curPts = new List<(double X, double Y)>();
 
             void FinalizeCycleIfAny()
@@ -188,7 +218,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     groups.Add(new CycleGroup
                     {
                         DepthZ = curDepth,
+                        RAbs = curRAbs,
                         TopZ = curTop,
+                        HasR = curHasR,
                         Points = new List<(double X, double Y)>(curPts)
                     });
                 }
@@ -214,7 +246,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 bool isG3 = RxG3.IsMatch(line);
                 bool isMotionBoundary = (isG0 || isG1 || isG2 || isG3);
 
-                // Track last rapid Z (used as fallback top Z if no R)
+                // Track last rapid Z (used as fallback absolute R if no R token)
                 if (isG0 && TryParseZ(line, out double zRapid))
                     lastRapidZ = zRapid;
 
@@ -233,7 +265,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (inCycle && !isCycleStart && isMotionBoundary)
                 {
                     FinalizeCycleIfAny();
-                    // continue processing this line as normal (modals already updated)
                     continue;
                 }
 
@@ -255,13 +286,25 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                     curDepth = zDepth;
 
-                    // Top: prefer R from cycle line, else last rapid Z, else 0
+                    // RAbs: prefer explicit R; else last rapid Z; else 0
+                    curHasR = false;
                     if (TryParseR(line, out double rTop))
-                        curTop = rTop;
+                    {
+                        curRAbs = rTop;
+                        curHasR = true;
+                    }
                     else if (lastRapidZ.HasValue)
-                        curTop = lastRapidZ.Value;
+                    {
+                        curRAbs = lastRapidZ.Value;
+                    }
                     else
-                        curTop = 0;
+                    {
+                        curRAbs = 0;
+                    }
+
+                    // THIS is the rule you want:
+                    // TZ is derived from absolute R by subtracting the machine-parameter clearance.
+                    curTop = curRAbs - rClearance;
 
                     inCycle = true;
 

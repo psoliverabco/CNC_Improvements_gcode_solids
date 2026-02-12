@@ -41,10 +41,17 @@ namespace CNC_Improvements_gcode_solids.Utilities
             regionsText = "";
             regionBlocks = new List<List<string>>();
             userMessage = "";
-
+            int tagIndex = 0;
             selectedText = selectedText ?? "";
             fullRtbText = fullRtbText ?? "";
             baseName = (baseName ?? "").Trim();
+
+
+
+            
+
+
+
 
             if (string.IsNullOrWhiteSpace(selectedText))
             {
@@ -98,7 +105,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var block = new List<string>();
                 block.Add($"({regionName} ST)");
 
-                int tagIndex = 0;
+               
                 int emittedXZ = 0;
 
                 foreach (var raw in strokes[i])
@@ -115,7 +122,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
                         continue;
 
                     emittedXZ++;
-
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
                     string lineWithTag = $"{g} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(lineWithTag, ENDTAG_COLUMN));
                 }

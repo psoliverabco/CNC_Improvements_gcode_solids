@@ -4,12 +4,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Auto Mill Reg"
         Width="520"
-        Height="210"
+        Height="250"
         WindowStartupLocation="Manual"
         ResizeMode="NoResize"
         Background="#222">
     <Grid x:Name="Root" Margin="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -27,7 +28,8 @@
                    Text="Name:"
                    Width="80"
                    VerticalAlignment="Center"
-                   Margin="0,0,10,10"/>
+                   Margin="0,0,10,10"
+                   Foreground="#DDD"/>
         <TextBox x:Name="TxtBaseName"
                  Grid.Row="0" Grid.Column="1"
                  Margin="0,0,0,10"
@@ -40,15 +42,31 @@
                    Text="Tool:"
                    Width="80"
                    VerticalAlignment="Center"
-                   Margin="0,0,10,10"/>
+                   Margin="0,0,10,10"
+                   Foreground="#DDD"/>
         <TextBox x:Name="TxtToolDia"
                  Grid.Row="1" Grid.Column="1"
                  Margin="0,0,0,10"
                  FontFamily="Consolas"
                  FontSize="14"/>
 
+        <!-- R clearance row (shown for DRILL only) -->
+        <TextBlock x:Name="LblRClear"
+                   Grid.Row="2" Grid.Column="0"
+                   Text="R clear:"
+                   Width="80"
+                   VerticalAlignment="Center"
+                   Margin="0,0,10,10"
+                   Foreground="#DDD"/>
+        <TextBox x:Name="TxtRClear"
+                 Grid.Row="2" Grid.Column="1"
+                 Margin="0,0,0,10"
+                 FontFamily="Consolas"
+                 FontSize="14"
+                 Text="3"/>
+
         <!-- Buttons -->
-        <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,0,0,10">
+        <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -62,8 +80,9 @@
 
         <!-- Hint -->
         <TextBlock x:Name="TxtHint"
-                   Grid.Row="3" Grid.ColumnSpan="2"
+                   Grid.Row="4" Grid.ColumnSpan="2"
                    Text="Tip: Name becomes &quot;Name (1)&quot;, &quot;Name (2)&quot;, etc."
-                   Opacity="0.9"/>
+                   Opacity="0.9"
+                   Foreground="#DDD"/>
     </Grid>
 </Window>

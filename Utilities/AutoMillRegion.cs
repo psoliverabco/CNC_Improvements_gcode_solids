@@ -42,7 +42,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
             regionsText = "";
             regionBlocks = new List<List<string>>();
             userMessage = "";
-
+            int tagIndex = 0;
             selectedText = selectedText ?? "";
             fullRtbText = fullRtbText ?? "";
             baseName = (baseName ?? "").Trim();
@@ -109,10 +109,15 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var block = new List<string>();
                 block.Add($"({regionName} ST)");
 
-                int tagIndex = 0;
+                
 
                 // First Z line, tagged + aligned by GeneralNormalizers
                 {
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
+
                     string zLine = $"Z{FormatNum(zPlane)} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(zLine, ENDTAG_COLUMN));
                 }
@@ -133,6 +138,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
                     emittedXY++;
 
+                    if (tagIndex > 9999)
+                    {
+                        tagIndex = 0;
+                    }
                     string lineWithTag = $"{g} {MakeEndTag(curAlpha, tagIndex++)}";
                     block.Add(GeneralNormalizers.NormalizeInsertLineAlignEndTag(lineWithTag, ENDTAG_COLUMN));
                 }

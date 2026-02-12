@@ -167,6 +167,321 @@ namespace CNC_Improvements_gcode_solids
         }
 
 
+
+        // ------------------------------
+        // RTB FIND (TxtGcode right-click)
+        // ------------------------------
+        private string _findText = "";
+        private bool _findMatchCase = false;
+        private bool _findWholeWord = false;
+        private TextPointer _findLastPos = null;
+
+        private void TxtGcode_SelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (TxtGcode == null) return;
+            TxtGcode.SelectAll();
+            TxtGcode.Focus();
+        }
+
+        private void TxtGcode_Find_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFindDialog(findNextImmediately: false);
+
+
+
+
+        }
+
+        private void TxtGcode_FindNext_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_findText))
+            {
+                ShowFindDialog(findNextImmediately: true);
+                return;
+            }
+
+            if (!FindNextInternal())
+                System.Media.SystemSounds.Beep.Play();
+        }
+
+        private void TxtGcode_FindPrev_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_findText))
+            {
+                ShowFindDialog(findNextImmediately: false);
+                return;
+            }
+
+            if (!FindPrevInternal())
+                System.Media.SystemSounds.Beep.Play();
+        }
+
+        private void ShowFindDialog(bool findNextImmediately)
+        {
+            if (TxtGcode == null) return;
+
+            var dlg = new Window
+            {
+                Title = "Find",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                Width = 360,
+                Height = 160
+            };
+
+            var grid = new Grid { Margin = new Thickness(10) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var tb = new TextBox { Text = _findText ?? "", Margin = new Thickness(0, 0, 0, 8) };
+            Grid.SetRow(tb, 0);
+            Grid.SetColumn(tb, 0);
+            Grid.SetColumnSpan(tb, 2);
+            grid.Children.Add(tb);
+
+            var cbCase = new CheckBox { Content = "Match case", IsChecked = _findMatchCase, Margin = new Thickness(0, 0, 0, 6) };
+            Grid.SetRow(cbCase, 1);
+            Grid.SetColumn(cbCase, 0);
+            grid.Children.Add(cbCase);
+
+            var cbWord = new CheckBox { Content = "Whole word", IsChecked = _findWholeWord, Margin = new Thickness(0, 0, 0, 6) };
+            Grid.SetRow(cbWord, 2);
+            Grid.SetColumn(cbWord, 0);
+            grid.Children.Add(cbWord);
+
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var btnFindNext = new Button { Content = "Find Next", Width = 90, Margin = new Thickness(0, 0, 6, 0), IsDefault = true };
+            var btnClose = new Button { Content = "Close", Width = 80, IsCancel = true };
+            btnClose.Click += (s, e) => dlg.Close();
+
+
+
+            sp.Children.Add(btnFindNext);
+            sp.Children.Add(btnClose);
+
+            Grid.SetRow(sp, 2);
+            Grid.SetColumn(sp, 1);
+            grid.Children.Add(sp);
+
+            dlg.Content = grid;
+
+            void DoFindNext()
+            {
+                _findText = tb.Text ?? "";
+                _findMatchCase = cbCase.IsChecked == true;
+                _findWholeWord = cbWord.IsChecked == true;
+
+                if (string.IsNullOrWhiteSpace(_findText))
+                    return;
+
+                if (!FindNextInternal())
+                    System.Media.SystemSounds.Beep.Play();
+            }
+
+            btnFindNext.Click += (s, e) => DoFindNext();
+
+            dlg.Loaded += (s, e) =>
+            {
+                tb.Focus();
+                tb.SelectAll();
+
+                if (findNextImmediately && !string.IsNullOrWhiteSpace(_findText))
+                    DoFindNext();
+            };
+
+            dlg.Show();
+        }
+
+        private bool FindNextInternal()
+        {
+            if (TxtGcode == null) return false;
+            if (string.IsNullOrWhiteSpace(_findText)) return false;
+
+            TextPointer start = (TxtGcode.Selection != null) ? TxtGcode.Selection.End : TxtGcode.CaretPosition;
+            if (_findLastPos != null && _findLastPos.CompareTo(start) > 0)
+                start = _findLastPos;
+
+            var hit = FindForward(start, TxtGcode.Document.ContentEnd, _findText, _findMatchCase, _findWholeWord);
+            if (hit == null)
+            {
+                // wrap
+                hit = FindForward(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd, _findText, _findMatchCase, _findWholeWord);
+                if (hit == null) return false;
+            }
+
+            SelectRange(hit.Item1, hit.Item2);
+            _findLastPos = hit.Item2;
+            return true;
+        }
+
+        private bool FindPrevInternal()
+        {
+            if (TxtGcode == null) return false;
+            if (string.IsNullOrWhiteSpace(_findText)) return false;
+
+            TextPointer end = (TxtGcode.Selection != null) ? TxtGcode.Selection.Start : TxtGcode.CaretPosition;
+
+            var hit = FindBackward(TxtGcode.Document.ContentStart, end, _findText, _findMatchCase, _findWholeWord);
+            if (hit == null)
+            {
+                // wrap to end
+                hit = FindBackward(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd, _findText, _findMatchCase, _findWholeWord);
+                if (hit == null) return false;
+            }
+
+            SelectRange(hit.Item1, hit.Item2);
+            _findLastPos = hit.Item2;
+            return true;
+        }
+
+        private void SelectRange(TextPointer a, TextPointer b)
+        {
+            if (TxtGcode == null || a == null || b == null) return;
+            TxtGcode.Selection.Select(a, b);
+            TxtGcode.CaretPosition = b;
+            TxtGcode.Focus();
+
+            // make sure selection is visible
+            var rect = b.GetCharacterRect(LogicalDirection.Forward);
+            TxtGcode.ScrollToVerticalOffset(Math.Max(0, rect.Top - 80));
+        }
+
+        private static Tuple<TextPointer, TextPointer> FindForward(
+            TextPointer start, TextPointer end,
+            string needle, bool matchCase, bool wholeWord)
+        {
+            if (start == null || end == null) return null;
+
+            var cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+            TextPointer p = start;
+            while (p != null && p.CompareTo(end) < 0)
+            {
+                if (p.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+                {
+                    string run = p.GetTextInRun(LogicalDirection.Forward);
+                    if (!string.IsNullOrEmpty(run))
+                    {
+                        int idx = run.IndexOf(needle, cmp);
+                        while (idx >= 0)
+                        {
+                            TextPointer a = p.GetPositionAtOffset(idx);
+                            TextPointer b = p.GetPositionAtOffset(idx + needle.Length);
+
+                            if (!wholeWord || IsWholeWord(a, b))
+                                return Tuple.Create(a, b);
+
+                            idx = run.IndexOf(needle, idx + 1, cmp);
+                        }
+                    }
+                }
+                p = p.GetNextContextPosition(LogicalDirection.Forward);
+            }
+            return null;
+        }
+
+        private static Tuple<TextPointer, TextPointer> FindBackward(
+            TextPointer start, TextPointer end,
+            string needle, bool matchCase, bool wholeWord)
+        {
+            if (start == null || end == null) return null;
+
+            // reliable (not fast, but fine for your editor sizes): scan forward, remember last hit
+            Tuple<TextPointer, TextPointer> last = null;
+            var cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+            TextPointer p = start;
+            while (p != null && p.CompareTo(end) < 0)
+            {
+                if (p.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+                {
+                    string run = p.GetTextInRun(LogicalDirection.Forward);
+                    if (!string.IsNullOrEmpty(run))
+                    {
+                        int idx = run.IndexOf(needle, cmp);
+                        while (idx >= 0)
+                        {
+                            TextPointer a = p.GetPositionAtOffset(idx);
+                            TextPointer b = p.GetPositionAtOffset(idx + needle.Length);
+
+                            if (b.CompareTo(end) <= 0)
+                            {
+                                if (!wholeWord || IsWholeWord(a, b))
+                                    last = Tuple.Create(a, b);
+                            }
+
+                            idx = run.IndexOf(needle, idx + 1, cmp);
+                        }
+                    }
+                }
+                p = p.GetNextContextPosition(LogicalDirection.Forward);
+            }
+
+            return last;
+        }
+
+        private static bool IsWholeWord(TextPointer a, TextPointer b)
+        {
+            char? prev = GetCharBefore(a);
+            char? next = GetCharAfter(b);
+
+            bool prevIsWord = prev.HasValue && IsWordChar(prev.Value);
+            bool nextIsWord = next.HasValue && IsWordChar(next.Value);
+
+            return !prevIsWord && !nextIsWord;
+        }
+
+        private static bool IsWordChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_' || c == ':' || c == '#';
+        }
+
+        private static char? GetCharBefore(TextPointer p)
+        {
+            if (p == null) return null;
+            TextPointer back = p.GetPositionAtOffset(-1, LogicalDirection.Backward);
+            if (back == null) return null;
+
+            if (back.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+            {
+                string run = back.GetTextInRun(LogicalDirection.Forward);
+                if (!string.IsNullOrEmpty(run))
+                    return run[0];
+            }
+            return null;
+        }
+
+        private static char? GetCharAfter(TextPointer p)
+        {
+            if (p == null) return null;
+
+            if (p.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+            {
+                string run = p.GetTextInRun(LogicalDirection.Forward);
+                if (!string.IsNullOrEmpty(run))
+                    return run[0];
+            }
+
+            TextPointer fwd = p.GetNextContextPosition(LogicalDirection.Forward);
+            if (fwd == null) return null;
+
+            if (fwd.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+            {
+                string run = fwd.GetTextInRun(LogicalDirection.Forward);
+                if (!string.IsNullOrEmpty(run))
+                    return run[0];
+            }
+
+            return null;
+        }
+
+
+
+
         private void EditorTools_Click(object sender, RoutedEventArgs e)
         {
             if (EditorTools?.ContextMenu == null) return;
@@ -291,19 +606,7 @@ namespace CNC_Improvements_gcode_solids
 
         
 
-        private static char? KeyToCharLetterOnly(Key key)
-        {
-            // Handle A..Z
-            if (key >= Key.A && key <= Key.Z)
-            {
-                int offset = (int)key - (int)Key.A;
-                return (char)('a' + offset);
-            }
-
-            // Numpad/other keys ignored (we only force letters)
-            return null;
-        }
-
+      
 
         
 
@@ -1305,23 +1608,39 @@ namespace CNC_Improvements_gcode_solids
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         private void BtnDeleteSelected_Click(object sender, RoutedEventArgs e)
         {
             // DELETE FIRST (this is what you were missing)
+            // DELETE FIRST (multi-select aware)
             switch (_activeKind)
             {
                 case RegionSetKind.Mill:
-                    DeleteFromList(MillSets, nameof(SelectedMillSet));
+                    DeleteFromListMulti(MillSets, CmbMillSets, nameof(SelectedMillSet));
                     break;
 
                 case RegionSetKind.Drill:
-                    DeleteFromList(DrillSets, nameof(SelectedDrillSet));
+                    DeleteFromListMulti(DrillSets, CmbDrillSets, nameof(SelectedDrillSet));
                     break;
 
                 default:
-                    DeleteFromList(TurnSets, nameof(SelectedTurnSet));
+                    DeleteFromListMulti(TurnSets, CmbTurnSets, nameof(SelectedTurnSet));
                     break;
             }
+
 
             // THEN navigate + apply the (new) selection
             switch (_activeKind)
@@ -1349,53 +1668,133 @@ namespace CNC_Improvements_gcode_solids
         }
 
 
-        private void DeleteFromList(ObservableCollection<RegionSet> list, string selectedPropName)
-        {
-            if (list == null || list.Count == 0)
-                return;
+        // ============================================================
+        // Multi-select checkbox propagation for Set Lists
+        // (ExportEnabled + ShowInViewAll)
+        // ============================================================
 
-            RegionSet? current = selectedPropName switch
+        private bool _bulkToggleGuard = false;
+
+        private void SetExportEnabled_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not CheckBox cb) return;
+            if (cb.DataContext is not RegionSet clicked) return;
+
+            bool newVal = cb.IsChecked == true;
+            ApplyToggleToHighlightedGroup(clicked, nameof(RegionSet.ExportEnabled), newVal);
+        }
+
+        private void SetShowInViewAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not CheckBox cb) return;
+            if (cb.DataContext is not RegionSet clicked) return;
+
+            bool newVal = cb.IsChecked == true;
+            ApplyToggleToHighlightedGroup(clicked, nameof(RegionSet.ShowInViewAll), newVal);
+        }
+
+        private void ApplyToggleToHighlightedGroup(RegionSet clicked, string propName, bool newVal)
+        {
+            if (_bulkToggleGuard) return;
+            if (clicked == null) return;
+
+            // Decide which ListBox we should act on based on the clicked set kind
+            ListBox? lb = clicked.Kind switch
             {
-                nameof(SelectedTurnSet) => SelectedTurnSet,
-                nameof(SelectedMillSet) => SelectedMillSet,
-                nameof(SelectedDrillSet) => SelectedDrillSet,
+                RegionSetKind.Turn => CmbTurnSets,
+                RegionSetKind.Mill => CmbMillSets,
+                RegionSetKind.Drill => CmbDrillSets,
                 _ => null
             };
 
-            if (current == null)
+            if (lb == null) return;
+
+            // If not multi-selected, do nothing extra (binding already handled the single item)
+            var selected = lb.SelectedItems?
+                .Cast<object>()
+                .OfType<RegionSet>()
+                .ToList() ?? new List<RegionSet>();
+
+            if (selected.Count <= 1)
                 return;
 
-            int idx = list.IndexOf(current);
-            if (idx < 0)
+            // Only propagate if the clicked item is part of the highlighted selection.
+            // (Prevents blasting selection if user clicks a checkbox on a non-selected row)
+            if (!selected.Contains(clicked))
                 return;
 
-            list.RemoveAt(idx);
+            _bulkToggleGuard = true;
+            try
+            {
+                foreach (var s in selected)
+                {
+                    if (s == null) continue;
 
-            RegionSet? newSel = null;
-            if (list.Count > 0)
-            {
-                int newIdx = idx;
-                if (newIdx >= list.Count) newIdx = list.Count - 1;
-                if (newIdx < 0) newIdx = 0;
-                newSel = list[newIdx];
+                    if (propName == nameof(RegionSet.ExportEnabled))
+                        s.ExportEnabled = newVal;
+                    else if (propName == nameof(RegionSet.ShowInViewAll))
+                        s.ShowInViewAll = newVal;
+                }
             }
-
-            if (selectedPropName == nameof(SelectedTurnSet))
+            finally
             {
-                _selectedTurnSet = null;
-                SelectedTurnSet = newSel;
-            }
-            else if (selectedPropName == nameof(SelectedMillSet))
-            {
-                _selectedMillSet = null;
-                SelectedMillSet = newSel;
-            }
-            else if (selectedPropName == nameof(SelectedDrillSet))
-            {
-                _selectedDrillSet = null;
-                SelectedDrillSet = newSel;
+                _bulkToggleGuard = false;
             }
         }
+
+
+        
+
+
+        private void DeleteFromListMulti<T>(ObservableCollection<T> list, ListBox listBox, string selectedPropName)
+        {
+            if (list == null || listBox == null)
+                return;
+
+            // Snapshot selection first (SelectedItems changes as you remove)
+            var selected = listBox.SelectedItems?.Cast<T>().ToList() ?? new List<T>();
+            if (selected.Count == 0)
+                return;
+
+            // Choose a "next" selection candidate BEFORE deleting
+            // Prefer: item after the last selected (by index), else item before the first selected
+            int firstIndex = int.MaxValue;
+            int lastIndex = -1;
+
+            foreach (var item in selected)
+            {
+                int idx = list.IndexOf(item);
+                if (idx >= 0)
+                {
+                    if (idx < firstIndex) firstIndex = idx;
+                    if (idx > lastIndex) lastIndex = idx;
+                }
+            }
+
+            int nextIndex = -1;
+            if (lastIndex >= 0 && lastIndex + 1 < list.Count) nextIndex = lastIndex + 1;
+            else if (firstIndex != int.MaxValue && firstIndex - 1 >= 0) nextIndex = firstIndex - 1;
+
+            // Remove all selected
+            foreach (var item in selected)
+                list.Remove(item);
+
+            // Set the bound Selected* property to the new selection (or null)
+            object next = null;
+            if (nextIndex >= 0 && nextIndex < list.Count)
+                next = list[nextIndex];
+
+            // selectedPropName is nameof(SelectedMillSet)/etc in your call sites
+            var prop = GetType().GetProperty(selectedPropName);
+            if (prop != null && prop.CanWrite)
+                prop.SetValue(this, next);
+
+            // Also set the listbox selection (keeps UI consistent immediately)
+            listBox.SelectedItem = next;
+        }
+
+
+
 
         // ============================================================
         // Project Save/Load (Universal)
@@ -1595,12 +1994,29 @@ namespace CNC_Improvements_gcode_solids
         }
 
 
+        private string _openProject = "";
+
+        public string OpenProject
+        {
+            get => _openProject;
+            set
+            {
+                if (string.Equals(_openProject, value, StringComparison.Ordinal))
+                    return;
+
+                _openProject = value ?? "";
+                OnPropertyChanged(nameof(OpenProject));
+            }
+        }
+
+
+
+
         private void BtnLoadProject_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 const string PROJECT_EXT = ".npcproj";
-
 
                 // - user can pick an existing project
                 // - OR type a new name (non-existing) and we treat it as "new project"
@@ -1633,11 +2049,6 @@ namespace CNC_Improvements_gcode_solids
                 if (string.IsNullOrWhiteSpace(path))
                     return;
 
-
-            
-
-
-
                 // If user typed without extension, force .npcproj
                 if (!path.EndsWith(".npcproj", StringComparison.OrdinalIgnoreCase) &&
                     !path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
@@ -1648,6 +2059,9 @@ namespace CNC_Improvements_gcode_solids
                 // NEW: remember the project folder for future exports
                 CurrentProjectDirectory = Path.GetDirectoryName(path) ?? "";
                 SetProjectNameFromProjectFilePath(path);
+
+                // NEW: show the chosen project file in the UI text block
+                OpenProject = Path.GetFileName(path);
 
                 // ------------------------------------------------------------
                 // NEW PROJECT (typed a name that doesn't exist):
@@ -1716,6 +2130,9 @@ namespace CNC_Improvements_gcode_solids
                     NavigateToTurn();
 
                     OnPropertyChanged(nameof(SelectedSetLabel));
+
+                    // NEW: ensure the binding updates immediately (if OpenProject isn't auto-notifying)
+                    OnPropertyChanged(nameof(OpenProject));
 
                     MessageBox.Show("New project created.", "NPC G-code Solids",
                         MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1802,6 +2219,9 @@ namespace CNC_Improvements_gcode_solids
 
                 OnPropertyChanged(nameof(SelectedSetLabel));
 
+                // NEW: ensure the binding updates immediately (if OpenProject isn't auto-notifying)
+                OnPropertyChanged(nameof(OpenProject));
+
                 MessageBox.Show("Project loaded.", "NPC G-code Solids",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -1811,6 +2231,7 @@ namespace CNC_Improvements_gcode_solids
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
 
@@ -3996,6 +4417,35 @@ namespace CNC_Improvements_gcode_solids
             return changed;
         }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         private async void JumpEditorToRegionStart(string statusText, int preLines = 5)
         {
             if (!AllowScrollToRegionStart)
@@ -5638,7 +6088,8 @@ namespace CNC_Improvements_gcode_solids
                 // first X/Y occurrence for starts
                 for (int i = 0; i < regionLines.Count; i++)
                 {
-                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    string u = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeForAxisScan_NoParens(regionLines[i]);
+
                     if (u.Length == 0) continue;
 
                     if (startXIndex < 0 && u.Contains("X")) startXIndex = i;
@@ -5651,7 +6102,7 @@ namespace CNC_Improvements_gcode_solids
                 // last X/Y occurrence for ends
                 for (int i = regionLines.Count - 1; i >= 0; i--)
                 {
-                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    string u = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeForAxisScan_NoParens(regionLines[i]);
                     if (u.Length == 0) continue;
 
                     if (endXIndex < 0 && u.Contains("X")) endXIndex = i;
@@ -5714,7 +6165,7 @@ namespace CNC_Improvements_gcode_solids
                     snapshotDefaults: null
                 );
 
-                rs.ExportEnabled = false;
+                rs.ExportEnabled = true;
                 rs.ShowInViewAll = true;
 
                 MillSets.Add(rs);
@@ -5838,7 +6289,7 @@ namespace CNC_Improvements_gcode_solids
 
                 for (int i = 0; i < regionLines.Count; i++)
                 {
-                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    string u = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeForAxisScan_NoParens(regionLines[i]);
                     if (u.Length == 0) continue;
 
                     if (startXIndex < 0 && u.Contains("X")) startXIndex = i;
@@ -5850,7 +6301,7 @@ namespace CNC_Improvements_gcode_solids
 
                 for (int i = regionLines.Count - 1; i >= 0; i--)
                 {
-                    string u = (regionLines[i] ?? "").Trim().ToUpperInvariant();
+                    string u = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeForAxisScan_NoParens(regionLines[i]);
                     if (u.Length == 0) continue;
 
                     if (endXIndex < 0 && u.Contains("X")) endXIndex = i;
@@ -5974,177 +6425,226 @@ namespace CNC_Improvements_gcode_solids
                 return;
             }
 
-            // Capture selection FIRST (dialogs can visually clear selection)
-            string selected = new TextRange(TxtGcode.Selection.Start, TxtGcode.Selection.End).Text ?? "";
-            selected = selected.Trim();
+            // ---------- MAIN-SCOPE vars for diagnostics ----------
+            string selected = "";
+            string fullText = "";
 
-            if (string.IsNullOrWhiteSpace(selected))
+            string baseName = "";
+            double toolDia = 10.0;
+
+            // Dialog value = CLEARANCE (machine parameter), usually 3
+            double rClear = 3.0;
+
+            // Parsed from returned canonical lines (for diagnostics / builder input)
+            string zHoleTopText = "0";
+            string depthText = "0";
+
+            try
             {
-                MessageBox.Show("Highlight a DRILL text region first, then click Auto Drill Reg.", "Auto Drill Reg",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
+                // Capture selection FIRST (dialogs can visually clear selection)
+                selected = new TextRange(TxtGcode.Selection.Start, TxtGcode.Selection.End).Text ?? "";
+                selected = selected.Trim();
 
-            // Full RTB text (AutoDrillRegion uses this to pick next available alpha)
-            string fullText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
-
-            string baseName;
-            double toolDia;
-
-            // REAL dialog in Utilities
-            if (!CNC_Improvements_gcode_solids.Utilities.AutoMillPromptDialog.ShowDrill(this, out baseName, out toolDia))
-                return;
-
-            if (!CNC_Improvements_gcode_solids.Utilities.AutoDrillRegion.TryBuildRegionsTextFromSelection(
-                    selectedText: selected,
-                    fullRtbText: fullText,
-                    baseName: baseName,
-                    regionsText: out var regionsText,
-                    regionBlocks: out var blocks,
-                    userMessage: out var msg))
-            {
-                MessageBox.Show(msg, "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (blocks == null || blocks.Count == 0)
-            {
-                MessageBox.Show("No regions were produced.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (DrillSets == null)
-            {
-                MessageBox.Show("DrillSets collection is null.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            // Regex for reading Z from the stored T line (T Z...)
-            var rxZ = new System.Text.RegularExpressions.Regex(@"(?i)Z\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))",
-                System.Text.RegularExpressions.RegexOptions.Compiled);
-
-            var insertsToAppend = new List<string>();
-
-            for (int bi = 0; bi < blocks.Count; bi++)
-            {
-                var block = blocks[bi];
-                if (block == null || block.Count < 4)
-                    continue;
-
-                string regionName = $"{baseName} ({bi + 1})";
-
-                // Take inner lines only (skip ST + END)
-                var regionLines = new List<string>();
-                for (int i = 1; i < block.Count - 1; i++)
+                if (string.IsNullOrWhiteSpace(selected))
                 {
-                    string s = block[i] ?? "";
-                    if (!string.IsNullOrWhiteSpace(s))
-                        regionLines.Add(s);
+                    MessageBox.Show("Highlight a DRILL text region first, then click Auto Drill Reg.", "Auto Drill Reg",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
                 }
 
-                if (regionLines.Count < 3)
-                    continue;
+                fullText = new TextRange(TxtGcode.Document.ContentStart, TxtGcode.Document.ContentEnd).Text ?? "";
 
-                // Drill depth line index is 0 (D Z...)
-                int drillDepthIndex = 0;
+                // Dialog: name + tool + CLEARANCE (default 3)
+                if (!CNC_Improvements_gcode_solids.Utilities.AutoMillPromptDialog.ShowDrill(this, out baseName, out toolDia, out rClear))
+                    return;
 
-                // Read ZHoleTop from the "T Z..." line (index 1)
-                string zHoleTop = "0";
+                // IMPORTANT:
+                // AutoDrillRegion must do:
+                //   - parse cycle R (absolute) from the highlighted G81.. line
+                //   - compute TopZ = Rabs - rClear
+                //   - emit canonical lines: D Z<depth>, T Z<TopZ>, then points
+                if (!CNC_Improvements_gcode_solids.Utilities.AutoDrillRegion.TryBuildRegionsTextFromSelection(
+                        selectedText: selected,
+                        fullRtbText: fullText,
+                        baseName: baseName,
+                        rClearance: rClear,
+                        regionsText: out var regionsText,
+                        regionBlocks: out var blocks,
+                        userMessage: out var msg))
                 {
-                    string tLine = regionLines[1] ?? "";
-                    var m = rxZ.Match(tLine);
-                    if (m.Success)
-                        zHoleTop = m.Groups[1].Value;
+                    MessageBox.Show(msg, "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
                 }
 
-                // Create the DRILL set (builder handles UID/n anchors + snapshot markers)
-                var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.Create(
-                    regionName: regionName,
-                    regionLines: regionLines,
-                    drillDepthIndex: drillDepthIndex,
-                    coordMode: "Cartesian",
-                    txtChamfer: "1",
-                    txtHoleDia: toolDia.ToString("0.###", CultureInfo.InvariantCulture),
-                    txtPointAngle: "118",
-                    txtZHoleTop: zHoleTop,
-                    txtZPlusExt: "5",
-                    snapshotDefaults: null
-                );
-
-                // IMPORTANT: DRILL builder does NOT insert into DrillSets in your current project pattern.
-                // So we add it here (but only if not already present).
-                if (!DrillSets.Contains(rs))
-                    DrillSets.Add(rs);
-
-                rs.ExportEnabled = false;
-                rs.ShowInViewAll = true;
-
-                // Store hole tokens as ANCHORED region lines (indices 2..end)
+                if (blocks == null || blocks.Count == 0)
                 {
-                    var sbH = new StringBuilder(1024);
-                    for (int i = 2; i < rs.RegionLines.Count; i++)
+                    MessageBox.Show("No regions were produced.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (DrillSets == null)
+                {
+                    MessageBox.Show("DrillSets collection is null.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Read Z from canonical D/T lines (returned by AutoDrillRegion)
+                var rxZ = new System.Text.RegularExpressions.Regex(
+                    @"(?i)\bZ\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))",
+                    System.Text.RegularExpressions.RegexOptions.Compiled);
+
+                var insertsToAppend = new List<string>();
+
+                for (int bi = 0; bi < blocks.Count; bi++)
+                {
+                    var block = blocks[bi];
+                    if (block == null || block.Count < 4)
+                        continue;
+
+                    string regionName = $"{baseName} ({bi + 1})";
+
+                    // Inner lines only (skip ST + END)
+                    var regionLines = new List<string>();
+                    for (int i = 1; i < block.Count - 1; i++)
                     {
-                        string sLine = rs.RegionLines[i] ?? "";
-                        if (string.IsNullOrWhiteSpace(sLine)) continue;
-                        if (sbH.Length > 0) sbH.Append('\n');
-                        sbH.Append(sLine);
+                        string s = block[i] ?? "";
+                        if (!string.IsNullOrWhiteSpace(s))
+                            regionLines.Add(s);
                     }
-                    rs.PageSnapshot.Values["HoleLineTexts"] = sbH.ToString();
+
+                    // Expect at least:
+                    //  0: D Z...
+                    //  1: T Z...
+                    //  2..: X..Y..
+                    if (regionLines.Count < 3)
+                        continue;
+
+                    // Extract ZHoleTop from returned "T Z..." (index 1)
+                    // Extract ZHoleTop from returned "T Z..." (index 1)
+                    // IMPORTANT: ignore any "(...)" blocks (CNC comments / end-tags) when parsing Z
+                    zHoleTopText = "0";
+                    {
+                        string tScan = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers
+                            .NormalizeForAxisScan_NoParens(regionLines[1]);
+
+                        var m = rxZ.Match(tScan);
+                        if (m.Success)
+                            zHoleTopText = m.Groups[1].Value;
+                    }
+
+
+                    // (Optional) extract depth from returned "D Z..." (index 0) for diagnostics
+                    // (Optional) extract depth from returned "D Z..." (index 0) for diagnostics
+                    // (Optional) extract depth from returned "D Z..." (index 0) for diagnostics
+                    // IMPORTANT: ignore any "(...)" blocks (CNC comments / end-tags) when parsing Z
+                    depthText = "0";
+                    {
+                        string dScan = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers
+                            .NormalizeForAxisScan_NoParens(regionLines[0]);
+
+                        var m = rxZ.Match(dScan);
+                        if (m.Success)
+                            depthText = m.Groups[1].Value;
+                    }
+
+
+
+                    int drillDepthIndex = 0; // your convention (D line is index 0)
+
+                    var rs = CNC_Improvements_gcode_solids.SetManagement.Builders.BuildDrillRegion.Create(
+                        regionName: regionName,
+                        regionLines: regionLines,
+                        drillDepthIndex: drillDepthIndex,
+                        coordMode: "Cartesian",
+                        txtChamfer: "1",
+                        txtHoleDia: toolDia.ToString("0.###", CultureInfo.InvariantCulture),
+                        txtPointAngle: "118",
+                        txtZHoleTop: zHoleTopText,   // <-- this is now the REAL ZHoleTop (TopZ = Rabs - clearance)
+                        txtZPlusExt: "5",
+                        snapshotDefaults: null
+                    );
+
+                    // REQUIRED flags
+                    rs.ExportEnabled = true;
+                    rs.ShowInViewAll = true;
+
+                    if (!DrillSets.Contains(rs))
+                        DrillSets.Add(rs);
+
+                    // Store hole tokens as ANCHORED region lines (indices 2..end) (keep your existing behavior)
+                    {
+                        var sbH = new StringBuilder(1024);
+                        for (int i = 2; i < rs.RegionLines.Count; i++)
+                        {
+                            string sLine = rs.RegionLines[i] ?? "";
+                            if (string.IsNullOrWhiteSpace(sLine)) continue;
+                            if (sbH.Length > 0) sbH.Append('\n');
+                            sbH.Append(sLine);
+                        }
+                        rs.PageSnapshot.Values["HoleLineTexts"] = sbH.ToString();
+                    }
+
+                    // Build RTB insert from stored region lines
+                    insertsToAppend.Add("(" + rs.Name + " ST)");
+                    for (int i = 0; i < rs.RegionLines.Count; i++)
+                    {
+                        string stored = rs.RegionLines[i] ?? "";
+                        string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
+                        string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
+                        if (!string.IsNullOrWhiteSpace(aligned))
+                            insertsToAppend.Add(aligned);
+                    }
+                    insertsToAppend.Add("(" + rs.Name + " END)");
+                    insertsToAppend.Add("");
                 }
 
-                // Build RTB insert from the *stored* region lines
-                insertsToAppend.Add("(" + rs.Name + " ST)");
-                for (int i = 0; i < rs.RegionLines.Count; i++)
+                if (insertsToAppend.Count == 0)
                 {
-                    string stored = rs.RegionLines[i] ?? "";
-                    string norm = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeTextLineToGcodeAndEndTag(stored);
-                    string aligned = CNC_Improvements_gcode_solids.Utilities.GeneralNormalizers.NormalizeInsertLineAlignEndTag(norm, 75);
-                    if (!string.IsNullOrWhiteSpace(aligned))
-                        insertsToAppend.Add(aligned);
+                    MessageBox.Show("No DRILL sets were created.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
                 }
-                insertsToAppend.Add("(" + rs.Name + " END)");
-                insertsToAppend.Add("");
+
+                // Append to RTB
+                {
+                    bool endsWithNewline = (fullText ?? "").EndsWith("\n") || (fullText ?? "").EndsWith("\r");
+                    string prefix = endsWithNewline ? "\n" : "\n\n";
+                    string finalInsert = prefix + string.Join("\n", insertsToAppend) + "\n";
+
+                    var end = TxtGcode.Document.ContentEnd;
+                    new TextRange(end, end).Text = finalInsert;
+                }
+
+                if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
+                {
+                    var sb = new System.Text.StringBuilder();
+
+                    sb.AppendLine("AUTO DRILL REG");
+                    sb.AppendLine();
+                    sb.AppendLine($"Base name : {baseName}");
+                    sb.AppendLine($"Tool dia  : {toolDia.ToString("0.###", CultureInfo.InvariantCulture)}");
+                    sb.AppendLine($"Clearance : {rClear.ToString("0.###", CultureInfo.InvariantCulture)}");
+                    sb.AppendLine($"Depth Z   : {depthText}");
+                    sb.AppendLine($"ZHoleTop  : {zHoleTopText}");
+                    sb.AppendLine();
+                    sb.AppendLine("----- SELECTED TEXT -----");
+                    sb.AppendLine(selected.TrimEnd());
+
+                    var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("AUTO DRILL : OUTPUT", sb.ToString());
+                    logWindow.Owner = this;
+                    logWindow.Show();
+                }
             }
-
-            if (insertsToAppend.Count == 0)
+            catch (Exception ex)
             {
-                MessageBox.Show("No DRILL sets were created.", "Auto Drill Reg", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            // Append the BUILT+STORED version to RTB
-            {
-                bool endsWithNewline = (fullText ?? "").EndsWith("\n") || (fullText ?? "").EndsWith("\r");
-                string prefix = endsWithNewline ? "\n" : "\n\n";
-                string finalInsert = prefix + string.Join("\n", insertsToAppend) + "\n";
-
-                var end = TxtGcode.Document.ContentEnd;
-                new TextRange(end, end).Text = finalInsert;
-            }
-
-            // Log window: show selected + AutoDrillRegion output (source of truth)
-            if (CNC_Improvements_gcode_solids.Properties.Settings.Default.LogWindowShow)
-            {
-                var sb = new System.Text.StringBuilder();
-
-                sb.AppendLine("AUTO DRILL REG");
-                sb.AppendLine();
-                sb.AppendLine($"Base name : {baseName}");
-                sb.AppendLine($"Tool dia  : {toolDia.ToString("0.###", CultureInfo.InvariantCulture)}");
-                sb.AppendLine();
-
-                sb.AppendLine("----- SELECTED TEXT -----");
-                sb.AppendLine(selected.TrimEnd());
-                sb.AppendLine();
-
-                sb.AppendLine("----- AUTO DRILL OUTPUT (REGIONS CREATED) -----");
-                sb.AppendLine((regionsText ?? "").TrimEnd());
-
-                var logWindow = new CNC_Improvements_gcode_solids.Utilities.LogWindow("AUTO DRILL : OUTPUT", sb.ToString());
-                logWindow.Owner = this;
-                logWindow.Show();
+                MessageBox.Show("Auto Drill Reg failed:\n\n" + ex.Message, "Auto Drill Reg",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+
+       
+
+
 
 
     }

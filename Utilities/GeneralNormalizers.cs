@@ -248,8 +248,74 @@ namespace CNC_Improvements_gcode_solids.Utilities
             return new string(chars, 0, n).ToUpperInvariant();
         }
 
-       
-        
+
+        /// <summary>
+        /// Normalize a line for axis searching (X/Y/Z detection):
+        /// - strip optional leading "#...#" anchor block (FIRST only, if at line start)
+        /// - strip optional leading "1234:" prefix
+        /// - strip ALL "(...)" blocks anywhere (CNC comments AND our unique end-tag)
+        /// - remove ALL whitespace
+        /// - uppercase
+        /// Result is safe for Contains("X") / regex scans without being poisoned by tags/comments.
+        /// </summary>
+        public static string NormalizeForAxisScan_NoParens(string? s)
+        {
+            if (string.IsNullOrEmpty(s))
+                return "";
+
+            // normalize line endings
+            string t = s.Replace("\r", "").Replace("\n", "");
+            if (t.Length == 0)
+                return "";
+
+            // strip optional leading anchor "#...#" (FIRST block only)
+            {
+                int i = 0;
+                while (i < t.Length && char.IsWhiteSpace(t[i]))
+                    i++;
+
+                if (i < t.Length && t[i] == '#')
+                {
+                    int anchorClose = t.IndexOf('#', i + 1);
+                    if (anchorClose > i)
+                        t = t.Substring(anchorClose + 1);
+                }
+            }
+
+            // strip optional "1234:" prefix
+            TryStripLeadingLineNumber(t, out t);
+            if (string.IsNullOrEmpty(t))
+                return "";
+
+            // strip ALL "(...)" blocks anywhere (includes CNC comments + unique end-tags)
+            t = System.Text.RegularExpressions.Regex.Replace(
+                t,
+                @"\([^)]*\)",
+                "",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant
+            );
+
+            if (string.IsNullOrWhiteSpace(t))
+                return "";
+
+            // remove ALL whitespace everywhere + uppercase
+            var chars = new char[t.Length];
+            int n = 0;
+
+            for (int i = 0; i < t.Length; i++)
+            {
+                char c = t[i];
+                if (char.IsWhiteSpace(c))
+                    continue;
+                chars[n++] = c;
+            }
+
+            if (n <= 0)
+                return "";
+
+            return new string(chars, 0, n).ToUpperInvariant();
+        }
+
 
 
     }

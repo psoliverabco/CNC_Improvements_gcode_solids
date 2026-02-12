@@ -8,79 +8,107 @@ namespace CNC_Improvements_gcode_solids.Utilities
 {
     /// <summary>
     /// Single prompt dialog used for:
-    ///  - Auto MILL (base name + tool dia)
-    ///  - Auto DRILL (base name + tool dia)
+    ///  - Auto MILL  (base name + tool dia)
+    ///  - Auto DRILL (base name + tool dia + R clearance)
     ///  - Auto TURN  (base name only)
-    ///
-    /// IMPORTANT:
-    /// - This code-behind does NOT depend on specific XAML control names at compile-time.
-    /// - It uses FindName() to locate TextBoxes/Buttons by common names.
-    /// - So it compiles even if your XAML names differ.
     /// </summary>
     public partial class AutoMillPromptDialog : Window
     {
+        private enum PromptMode
+        {
+            Mill,
+            Turn,
+            Drill
+        }
+
+        private PromptMode _mode = PromptMode.Mill;
+
         private string _baseName = "";
         private double _toolDia = 10.0;
+        private double _rClear = 3.0;
 
         public string BaseName => _baseName;
         public double ToolDia => _toolDia;
+        public double RClear => _rClear;
 
         public AutoMillPromptDialog()
         {
             InitializeComponent();
-
-            // If XAML already wires button handlers, this is harmless.
-            // If not, we attach to common OK/Cancel names.
-            HookOkCancelIfPresent();
+            // IMPORTANT (DO NOT REMOVE):
+            // We do NOT auto-hook OK/Cancel click handlers here.
+            //
+            // Reason:
+            // - The XAML already wires Click="BtnOk_Click" / Click="BtnCancel_Click".
+            // - Auto-hooking adds a SECOND handler, which reintroduces the repeat offender:
+            //     DialogResult can be set only after Window is created and shown as dialog.
+            //   (and can also double-run OK/Cancel logic).
+            //
+            // Rule: Only close this window via SafeCloseDialog(true/false).
         }
 
-        // ============================================================
-        // PUBLIC STATIC ENTRY POINTS (these are what MainWindow calls)
-        // ============================================================
 
-        // Existing MILL usage (base name + tool dia)
-        public static bool Show(Window owner, out string baseName, out double toolDia)
+        private void BtnOk_Click(object sender, RoutedEventArgs e)
         {
-            return ShowCore(
-                owner: owner,
-                title: "Auto Mill Reg",
-                headerText: "Create Auto MILL regions from highlighted text",
-                defaultBaseName: "MILL_AUTO",
-                defaultToolDia: 10.0,
-                allowToolDiaEdit: true,
-                out baseName,
-                out toolDia
-            );
+            OnOk();
         }
 
-        // TURN usage (base name only)
-        public static bool ShowTurn(Window owner, out string baseName)
+        private void BtnCancel_Click(object sender, RoutedEventArgs e)
+        {
+            SafeCloseDialog(false);
+        }
+
+
+        // ============================================================
+        // PUBLIC STATIC ENTRY POINTS
+        // ============================================================
+
+        // MILL: base name + tool dia
+        public static bool Show(Window owner, out string baseName, out double toolDia)
         {
             bool ok = ShowCore(
                 owner: owner,
-                title: "Auto Turn Reg",
-                headerText: "Create Auto TURN regions from highlighted text",
-                defaultBaseName: "TURN",
+                mode: PromptMode.Mill,
+                title: "Auto Mill Reg",
+                defaultBaseName: "MILL",
                 defaultToolDia: 10.0,
-                allowToolDiaEdit: false,
+                defaultRClear: 3.0,
                 out baseName,
-                out _ // ignored
+                out toolDia,
+                out _ // r ignored
             );
             return ok;
         }
 
-        // DRILL usage (base name + tool dia) with required defaults: name=DRILL, dia=10
-        public static bool ShowDrill(Window owner, out string baseName, out double toolDia)
+        // TURN: base name only
+        public static bool ShowTurn(Window owner, out string baseName)
+        {
+            bool ok = ShowCore(
+                owner: owner,
+                mode: PromptMode.Turn,
+                title: "Auto Turn Reg",
+                defaultBaseName: "TURN",
+                defaultToolDia: 10.0,
+                defaultRClear: 3.0,
+                out baseName,
+                out _,
+                out _
+            );
+            return ok;
+        }
+
+        // DRILL: base name + tool dia + R clearance (defaults: DRILL, 10, 3)
+        public static bool ShowDrill(Window owner, out string baseName, out double toolDia, out double rClear)
         {
             return ShowCore(
                 owner: owner,
+                mode: PromptMode.Drill,
                 title: "Auto Drill Reg",
-                headerText: "Create Auto DRILL regions from highlighted text",
                 defaultBaseName: "DRILL",
                 defaultToolDia: 10.0,
-                allowToolDiaEdit: true,
+                defaultRClear: 3.0,
                 out baseName,
-                out toolDia
+                out toolDia,
+                out rClear
             );
         }
 
@@ -90,20 +118,23 @@ namespace CNC_Improvements_gcode_solids.Utilities
 
         private static bool ShowCore(
             Window owner,
+            PromptMode mode,
             string title,
-            string headerText,
             string defaultBaseName,
             double defaultToolDia,
-            bool allowToolDiaEdit,
+            double defaultRClear,
             out string baseName,
-            out double toolDia)
+            out double toolDia,
+            out double rClear)
         {
             baseName = "";
             toolDia = 0;
+            rClear = 0;
 
             var dlg = new AutoMillPromptDialog
             {
-                Title = title
+                Title = title,
+                _mode = mode
             };
 
             if (owner != null)
@@ -112,120 +143,170 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 dlg.WindowStartupLocation = WindowStartupLocation.CenterOwner;
             }
 
-            dlg.SetHeaderText(headerText);
-            dlg.SetDefaults(defaultBaseName, defaultToolDia, allowToolDiaEdit);
+            dlg.ApplyModeUi(mode);
+            dlg.SetDefaults(defaultBaseName, defaultToolDia, defaultRClear);
 
             bool? res = dlg.ShowDialog();
             if (res != true)
                 return false;
 
-            // Read results (dialog validated before setting DialogResult=true)
             baseName = dlg._baseName;
             toolDia = dlg._toolDia;
+            rClear = dlg._rClear;
             return true;
         }
 
         // ============================================================
-        // OK / CANCEL (works even if XAML has no handlers)
+        // UI MODE
+        // ============================================================
+
+        private void ApplyModeUi(PromptMode mode)
+        {
+            // Controls exist because we ship the XAML; keep it simple and explicit.
+            var lblTool = FindName("LblToolDia") as TextBlock;
+            var txtTool = FindName("TxtToolDia") as TextBox;
+
+            var lblR = FindName("LblRClear") as TextBlock;
+            var txtR = FindName("TxtRClear") as TextBox;
+
+            if (mode == PromptMode.Turn)
+            {
+                if (lblTool != null) lblTool.Visibility = Visibility.Collapsed;
+                if (txtTool != null) txtTool.Visibility = Visibility.Collapsed;
+
+                if (lblR != null) lblR.Visibility = Visibility.Collapsed;
+                if (txtR != null) txtR.Visibility = Visibility.Collapsed;
+
+                Height = 200;
+            }
+            else if (mode == PromptMode.Mill)
+            {
+                if (lblTool != null) lblTool.Visibility = Visibility.Visible;
+                if (txtTool != null) txtTool.Visibility = Visibility.Visible;
+
+                if (lblR != null) lblR.Visibility = Visibility.Collapsed;
+                if (txtR != null) txtR.Visibility = Visibility.Collapsed;
+
+                Height = 220;
+            }
+            else // Drill
+            {
+                if (lblTool != null) lblTool.Visibility = Visibility.Visible;
+                if (txtTool != null) txtTool.Visibility = Visibility.Visible;
+
+                if (lblR != null) lblR.Visibility = Visibility.Visible;
+                if (txtR != null) txtR.Visibility = Visibility.Visible;
+
+                Height = 250;
+            }
+        }
+
+        private void SetDefaults(string defaultBaseName, double defaultToolDia, double defaultRClear)
+        {
+            var nameBox = GetNameBox();
+            if (nameBox != null)
+            {
+                nameBox.Text = defaultBaseName ?? "";
+                nameBox.Focus();
+                nameBox.SelectAll();
+            }
+
+            var diaBox = GetDiaBox();
+            if (diaBox != null)
+            {
+                diaBox.Text = defaultToolDia.ToString("0.###", CultureInfo.InvariantCulture);
+                diaBox.IsEnabled = (_mode != PromptMode.Turn);
+                diaBox.Opacity = diaBox.IsEnabled ? 1.0 : 0.4;
+            }
+
+            var rBox = GetRBox();
+            if (rBox != null)
+            {
+                rBox.Text = defaultRClear.ToString("0.###", CultureInfo.InvariantCulture);
+                rBox.IsEnabled = (_mode == PromptMode.Drill);
+                rBox.Opacity = rBox.IsEnabled ? 1.0 : 0.4;
+            }
+
+            _baseName = (defaultBaseName ?? "").Trim();
+            _toolDia = defaultToolDia;
+            _rClear = defaultRClear;
+        }
+
+        // ============================================================
+        // OK / CANCEL
         // ============================================================
 
         private void HookOkCancelIfPresent()
         {
-            var okBtn =
-                FindName("BtnOk") as Button ??
-                FindName("OK") as Button ??
-                FindName("ButtonOk") as Button;
-
-            var cancelBtn =
-                FindName("BtnCancel") as Button ??
-                FindName("Cancel") as Button ??
-                FindName("ButtonCancel") as Button;
-
-            if (okBtn != null)
-                okBtn.Click += (_, __) => OnOk();
-
-            if (cancelBtn != null)
-                cancelBtn.Click += (_, __) => DialogResult = false;
+            // IMPORTANT: Intentionally disabled.
+            // Do not reintroduce button auto-hooking in this dialog.
+            // XAML already wires BtnOk_Click / BtnCancel_Click.
+            // Close must go through SafeCloseDialog only.
         }
+
+
+
 
         private void OnOk()
         {
-            string nm = (GetNameBox()?.Text ?? "").Trim();
+            string nm = (TxtBaseName?.Text ?? "").Trim();
             if (string.IsNullOrWhiteSpace(nm))
             {
                 MessageBox.Show("Base name is required.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            // TURN mode disables the dia box; in that case we accept a safe default.
             double dia = 10.0;
-
-            var diaBox = GetDiaBox();
-            bool diaEditable = (diaBox != null && diaBox.IsEnabled);
-
-            if (diaEditable)
+            if (_mode != PromptMode.Turn)
             {
-                string diaText = (diaBox.Text ?? "").Trim();
-                if (!TryParseToolDia(diaText, out dia) || dia <= 0)
+                string diaText = (TxtToolDia?.Text ?? "").Trim();
+                if (!TryParseNumber(diaText, out dia) || dia <= 0)
                 {
                     MessageBox.Show("Tool dia must be a number > 0.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
             }
 
+            double r = 3.0;
+            if (_mode == PromptMode.Drill)
+            {
+                string rText = (FindName("TxtRClear") as TextBox)?.Text ?? "";
+                rText = (rText ?? "").Trim();
+
+                if (!TryParseNumber(rText, out r))
+                {
+                    MessageBox.Show("R clearance must be a number.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             _baseName = nm;
             _toolDia = dia;
+            _rClear = r;
 
-            // DialogResult only legal when shown with ShowDialog()
-            if (Owner != null && IsActive)
+            SafeCloseDialog(true);
+        }
+
+
+        private void SafeCloseDialog(bool ok)
+        {
+            // ALWAYS safe:
+            // - If shown via ShowDialog, DialogResult works.
+            // - If shown via Show (or anything else), DialogResult throws → we catch and Close().
+            try
             {
-                try
-                {
-                    DialogResult = true;
-                    return;
-                }
-                catch
-                {
-                    // fall through to Close()
-                }
+                DialogResult = ok;
             }
-
+            catch (InvalidOperationException)
+            {
+                // Not a dialog window → just close
+            }
             Close();
         }
-
-
-
-        // XAML wires these by name (AutoMillPromptDialog.xaml line 58/59).
-        // Keep them as thin wrappers.
-        private void BtnOk_Click(object sender, RoutedEventArgs e)
-        {
-            OnOk();
-        }
-
-        private void BtnCancel_Click(object sender, RoutedEventArgs e)
-        {
-            // DialogResult only legal when shown with ShowDialog()
-            if (Owner != null && IsActive)
-            {
-                try
-                {
-                    DialogResult = false;
-                    return;
-                }
-                catch
-                {
-                    // fall through to Close()
-                }
-            }
-
-            Close();
-        }
-
-
 
 
         // ============================================================
-        // UI helpers (NO hard dependency on XAML names)
+        // UI helpers
         // ============================================================
 
         private TextBox GetNameBox()
@@ -246,53 +327,23 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 FindName("ToolDiaBox") as TextBox;
         }
 
-        private TextBlock GetHeaderBlock()
+        private TextBox GetRBox()
         {
             return
-                FindName("TxtHeader") as TextBlock ??
-                FindName("HeaderText") as TextBlock ??
-                FindName("LblHeader") as TextBlock;
+                FindName("TxtRClear") as TextBox ??
+                FindName("TxtR") as TextBox ??
+                FindName("TbR") as TextBox ??
+                FindName("RClearBox") as TextBox;
         }
 
-        private void SetHeaderText(string headerText)
+        private static bool TryParseNumber(string s, out double v)
         {
-            var tb = GetHeaderBlock();
-            if (tb != null)
-                tb.Text = headerText ?? "";
-        }
-
-        private void SetDefaults(string defaultBaseName, double defaultToolDia, bool allowToolDiaEdit)
-        {
-            var nameBox = GetNameBox();
-            if (nameBox != null)
-            {
-                nameBox.Text = defaultBaseName ?? "";
-                nameBox.Focus();
-                nameBox.SelectAll();
-            }
-
-            var diaBox = GetDiaBox();
-            if (diaBox != null)
-            {
-                diaBox.Text = defaultToolDia.ToString("0.###", CultureInfo.InvariantCulture);
-                diaBox.IsEnabled = allowToolDiaEdit;
-                diaBox.Opacity = allowToolDiaEdit ? 1.0 : 0.4;
-            }
-
-            _baseName = (defaultBaseName ?? "").Trim();
-            _toolDia = defaultToolDia;
-        }
-
-        private static bool TryParseToolDia(string s, out double dia)
-        {
-            dia = 0;
+            v = 0;
             if (string.IsNullOrWhiteSpace(s))
                 return false;
 
-            // accept comma decimals
             s = s.Replace(',', '.');
-
-            return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out dia);
+            return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v);
         }
     }
 }

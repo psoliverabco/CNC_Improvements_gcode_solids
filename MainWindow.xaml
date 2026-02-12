@@ -167,16 +167,22 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Tick: Show in View All -->
+                <!-- Tick: Show in View All -->
                 <CheckBox Grid.Column="0"
-                  Style="{StaticResource DarkCheckBoxStyle}"
-                  IsChecked="{Binding ShowInViewAll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                  ToolTip="Show in View All"/>
+                 Style="{StaticResource DarkCheckBoxStyle}"
+                 IsChecked="{Binding ShowInViewAll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 Click="SetShowInViewAll_Click"
+                 ToolTip="Show in View All"/>
+
 
                 <!-- Tick: Export -->
+                <!-- Tick: Export -->
                 <CheckBox Grid.Column="1"
-                  Style="{StaticResource DarkCheckBoxStyle}"
-                  IsChecked="{Binding ExportEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                  ToolTip="Include in Export"/>
+                 Style="{StaticResource DarkCheckBoxStyle}"
+                 IsChecked="{Binding ExportEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 Click="SetExportEnabled_Click"
+                 ToolTip="Include in Export"/>
+
 
                 <!-- Name -->
                 <TextBlock Grid.Column="2"
@@ -396,7 +402,7 @@
                     <!-- TURN -->
                     <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,12,0">
                         <Button Content="  Edit Turning  "
-                                    Height="40"
+                                    Height="30"
                                     Width="Auto"
                                     Margin="0 0 0 12"
                                     Background="#555"
@@ -409,13 +415,14 @@
          ItemsSource="{Binding TurnSets}"
          SelectedItem="{Binding SelectedTurnSet, Mode=TwoWay}"
          ItemTemplate="{StaticResource RegionSetRowTemplate}"
+                                  SelectionMode="Extended"
          HorizontalAlignment="Stretch"
          FontSize="15"
          Background="#555"
          Foreground="White"
          FontWeight="Bold"
          Padding="10,10,10,10"
-         Height="100">
+         Height="150">
                             <ListBox.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Cut" Click="TurnSets_Cut_Click"/>
@@ -430,7 +437,7 @@
                     <!-- MILL -->
                     <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,12,0">
                         <Button Content="  Edit Milling  "
-                                    Height="40"
+                                    Height="30"
                                     Width="Auto"                                
                                     Margin="0 0 0 12"
                                     Background="#555"
@@ -446,13 +453,14 @@
          ItemsSource="{Binding MillSets}"
          SelectedItem="{Binding SelectedMillSet, Mode=TwoWay}"
          ItemTemplate="{StaticResource RegionSetRowTemplate}"
+                                  SelectionMode="Extended"
          HorizontalAlignment="Stretch"
          Background="#555"
          Foreground="White"
          FontSize="15"
          FontWeight="Bold"
          Padding="10,10,10,10"
-         Height="100">
+         Height="150">
                             <ListBox.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Cut" Click="MillSets_Cut_Click"/>
@@ -474,7 +482,7 @@
                     <StackPanel Grid.Column="2" Orientation="Vertical">
 
                         <Button Content="  Edit Drilling  "
-                                    Height="40"
+                                    Height="30"
                                     Width="Auto"                               
                                     Margin="0 0 0 12"
                                     Background="#555"
@@ -490,13 +498,14 @@
          ItemsSource="{Binding DrillSets}"
          SelectedItem="{Binding SelectedDrillSet, Mode=TwoWay}"
          ItemTemplate="{StaticResource RegionSetRowTemplate}"
+                                  SelectionMode="Extended"
          HorizontalAlignment="Stretch"
          FontSize="15"
          Background="#555"
          Foreground="White"
          FontWeight="Bold"
          Padding="10,10,10,10"
-         Height="100">
+         Height="150">
                             <ListBox.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Cut" Click="DrillSets_Cut_Click"/>
@@ -510,19 +519,41 @@
                 </Grid>
 
 
-                <!-- SELECTED ITEM LABEL -->
+                <Grid Grid.Column="1" Margin="0,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="249"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock Text="{Binding SelectedSetLabel}"
-           Background="#555"
-           Foreground="White"
-           Height="40"
-           Margin="0,10,0,0"
-           FontFamily="Consolas"
-           FontSize="16"
-           Padding="50,12,0,0"
-           TextWrapping="Wrap"
-           FontWeight="Bold"
-           HorizontalAlignment="Stretch"/>
+                    
+
+                    <TextBlock Grid.Column="0"
+               Text="{Binding OpenProject, RelativeSource={RelativeSource AncestorType=Window}}"
+               Background="#555"
+               Foreground="White"
+               Height="30"
+               Margin="0,10,0,0"
+               FontFamily="Consolas"
+               FontSize="16"
+               Padding="10,7,0,0"
+               TextWrapping="NoWrap"
+               FontWeight="Bold"/>
+
+                    <TextBlock Grid.Column="1"
+                Text="{Binding SelectedSetLabel}"
+               Background="#555"
+               Foreground="White"
+               Height="30"
+                     
+               Margin="10,10,0,0"
+               FontFamily="Consolas"
+               FontSize="16"
+               Padding="15,7,0,0"
+               TextWrapping="NoWrap"
+               FontWeight="Bold"/>
+
+
+                </Grid>
 
 
             </StackPanel>
@@ -537,7 +568,7 @@
         BorderBrush="#444"
         BorderThickness="1"
         Padding="10"
-        Margin="10,240,10,10">
+        Margin="10,275,10,10">
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition/>
@@ -545,19 +576,36 @@
                 </Grid.RowDefinitions>
 
                 <RichTextBox x:Name="TxtGcode"
-                 Grid.Row="0"
-                 FontFamily="Consolas"
-                 FontSize="14"
-                 
-                 DataObject.Pasting="TxtGcode_Pasting"
-                 
-                 VerticalScrollBarVisibility="Auto"
-                 AcceptsReturn="True"
-                 AcceptsTab="True"
-                 IsReadOnly="False"
-                 Padding="10,0,10,0"
-                 Background="#EEE"
-                 BorderThickness="0" Margin="0,0,0,49" Grid.RowSpan="2"/>
+             Grid.Row="0"
+             FontFamily="Consolas"
+             FontSize="14"
+             DataObject.Pasting="TxtGcode_Pasting"
+             VerticalScrollBarVisibility="Auto"
+             AcceptsReturn="True"
+             AcceptsTab="True"
+             IsReadOnly="False"
+             Padding="10,0,10,0"
+             Background="#EEE"
+             BorderThickness="0"
+             Margin="0,0,0,49"
+             Grid.RowSpan="2">
+
+                    <RichTextBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Find..." Click="TxtGcode_Find_Click"/>
+                            <MenuItem Header="Find Next" Click="TxtGcode_FindNext_Click"/>
+                            <MenuItem Header="Find Previous" Click="TxtGcode_FindPrev_Click"/>
+                            <Separator/>
+
+                            <!-- IMPORTANT: ContextMenu is a popup, so we MUST set CommandTarget -->
+                            <MenuItem Header="Select All"
+                  Command="ApplicationCommands.SelectAll"
+                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        </ContextMenu>
+                    </RichTextBox.ContextMenu>
+
+                </RichTextBox>
+
 
 
 
@@ -566,7 +614,7 @@
 
                 <UniformGrid Grid.Row="1"
              Rows="1"
-             Columns="7"
+             Columns="8"
              Margin="0,1,0,0">
 
                     <Button x:Name="CodeClean"
@@ -663,7 +711,7 @@
                     
 
                     <Button x:Name="test"
-            Content="Reg Sets Diag"
+            Content="Sets Diag"
             Height="35"
             Padding="0"
             Margin="0,28,0,0"

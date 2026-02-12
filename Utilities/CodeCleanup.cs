@@ -13,14 +13,18 @@ namespace CNC_Improvements_gcode_solids.Utilities
     /// - Strip CNC comments "( ... )" everywhere EXCEPT the unique end-tag we own.
     /// - Rebuild anchors "#uid,n#" (n starts at 1 and increments by 1).
     /// - Rebuild unique end-tags using the canonical scheme:
-    ///     Turn: (t:a0000..), next turn set (t:b0000..), etc.
-    ///     Mill: (m:a0000..), next mill set (m:b0000..), etc.
-    ///     Drill:(d:a0000..), next drill set(d:b0000..), etc.
+    ///     Turn: (t:a0000..),
+    ///     Mill: (m:a0000..), 
+    ///     Drill:(d:a0000..), 
     ///
     /// IMPORTANT:
     /// - Updates RegionSets IN-PLACE (RegionLines + snapshot anchor values if present).
     /// - NO SEARCH: snapshot anchor values are remapped by original anchor N -> new anchor N (positional).
     /// - Emits editor text with "(NAME ST)" / "(NAME END)" markers (output only).
+    ///
+    /// CHANGE (2026-02-xx):
+    /// - The numeric NNNN portion of (t/m/d:<setLetter><NNNN>) is now a CONTINUOUS counter per type list,
+    ///   NOT reset per set. Wraps at 9999 -> 0000.
     /// </summary>
     internal static class CodeCleanup
     {
@@ -41,6 +45,9 @@ namespace CNC_Improvements_gcode_solids.Utilities
         private static readonly Regex RxLeadingAnchor =
             new Regex(@"^\s*#([^#]+)#", RegexOptions.Compiled);
 
+        // Wrap value for tag numeric counter
+        private const int TAG_WRAP = 9999;
+
         public static string BuildAndApplyAllCleanup(
             IList<RegionSet> turnSets,
             IList<RegionSet> millSets,
@@ -58,16 +65,23 @@ namespace CNC_Improvements_gcode_solids.Utilities
             report.AppendLine("     TURN: (t:a0000..), next set (t:b0000..), etc.");
             report.AppendLine("     MILL: (m:a0000..), next set (m:b0000..), etc.");
             report.AppendLine("     DRILL:(d:a0000..), next set (d:b0000..), etc.");
+            report.AppendLine(" - Numeric part NNNN is CONTINUOUS per type across ALL sets (wrap 9999->0000).");
             report.AppendLine("------------------------------------------------------------");
             report.AppendLine();
 
-            int turnTouched = CleanupSetList(turnSets, typePrefix: 't', report, editor, "TURN");
-            int millTouched = CleanupSetList(millSets, typePrefix: 'm', report, editor, "MILL");
-            int drillTouched = CleanupSetList(drillSets, typePrefix: 'd', report, editor, "DRILL");
+            // NEW: running counters per type (do NOT reset per set)
+            int turnNum = 0;
+            int millNum = 0;
+            int drillNum = 0;
+
+            int turnTouched = CleanupSetList(turnSets, typePrefix: 't', report, editor, "TURN", ref turnNum);
+            int millTouched = CleanupSetList(millSets, typePrefix: 'm', report, editor, "MILL", ref millNum);
+            int drillTouched = CleanupSetList(drillSets, typePrefix: 'd', report, editor, "DRILL", ref drillNum);
 
             report.AppendLine();
             report.AppendLine("------------------------------------------------------------");
             report.AppendLine($"DONE. Sets touched: TURN={turnTouched}, MILL={millTouched}, DRILL={drillTouched}");
+            report.AppendLine($"Tag counters ended at: TURN={turnNum}, MILL={millNum}, DRILL={drillNum}  (next value)");
             report.AppendLine("------------------------------------------------------------");
 
             newEditorText = editor.ToString().Replace("\r\n", "\n");
@@ -79,7 +93,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
             char typePrefix,
             StringBuilder report,
             StringBuilder editor,
-            string title)
+            string title,
+            ref int runningTagNum)
         {
             if (sets == null || sets.Count == 0)
             {
@@ -98,8 +113,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (string.IsNullOrWhiteSpace(setName))
                     setName = $"{title}-{setIndex + 1}";
 
-                // Per-type set letter: a, b, c... (excel-style if needed)
-                string setLetter = ToAlphaIndex(setIndex); // a, b, ... z, aa, ab...
+                // Per-type set letter: a, b, c... (ROLL OVER a..z)
+                string setLetter = ToAlphaIndex(setIndex); // a, b, ... z, a, b...
 
                 int beforeCount = set.RegionLines?.Count ?? 0;
                 if (beforeCount == 0)
@@ -165,8 +180,12 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 {
                     string core = cleanedCore[i];
 
-                    // numeric 0000.. increments by 1 per line in this set
-                    string num = i.ToString("0000");
+                    // NEW: numeric NNNN is continuous per type across sets (wrap 9999->0000)
+                    int nnnn = runningTagNum;
+                    runningTagNum++;
+                    if (runningTagNum > TAG_WRAP) runningTagNum = 0;
+
+                    string num = nnnn.ToString("0000");
                     string newTag = $"({typePrefix}:{setLetter}{num})";
 
                     // Ensure no legacy tag remains
@@ -208,7 +227,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 report.AppendLine($"  Removed blank: {removedBlank}");
                 report.AppendLine($"  Removed comment blocks: {removedCommentBlocks}");
                 report.AppendLine($"  UID: {uid}");
-                report.AppendLine($"  Tag: ({typePrefix}:{setLetter}0000..)  (numeric increments by 1)");
+                report.AppendLine($"  Tag: ({typePrefix}:{setLetter}NNNN)  (NNNN continuous per {title}, wrap 9999->0000)");
                 report.AppendLine();
             }
 
@@ -382,6 +401,5 @@ namespace CNC_Improvements_gcode_solids.Utilities
             index %= 26; // roll over after z
             return ((char)('a' + index)).ToString();
         }
-
     }
 }
