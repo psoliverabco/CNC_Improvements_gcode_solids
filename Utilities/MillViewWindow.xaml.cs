@@ -4377,10 +4377,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
         /// </summary>
         public string BuildClipperExportText(bool includeIslands = true)
         {
-            // Closed CL Wire mode uses a completely separate export format:
-            //  - INNER:  one OUTER loop (the closed wire)
-            //  - OUTER:  one OUTER loop (bounding box) + one ISLAND loop (the closed wire)
-            // It does NOT use the toolpath/clipper cleanup pipeline.
+            // Closed CL Wire mode uses a completely separate export format.
             if (HasAnyClosedWire())
             {
                 _lastClipperExportText = BuildClosedWireExportText();
@@ -4390,6 +4387,22 @@ namespace CNC_Improvements_gcode_solids.Utilities
             if (_segs == null || _segs.Count == 0)
             {
                 _lastClipperExportText = "";
+                return _lastClipperExportText;
+            }
+
+            // ------------------------------------------------------------
+            // SPECIAL CASE: point-only toolpath -> emit tool disc as circle
+            // ------------------------------------------------------------
+            if (TryBuildPointOnlyToolDiscPrims(out var pointOuter, out var pointIslands))
+            {
+                var sbPoint = new System.Text.StringBuilder(8 * 1024);
+
+                // Always one OUTER loop for point-only
+                sbPoint.AppendLine("--- LOOP 0  OUTER ---");
+                AppendPythonFriendlyPrimsToSb(sbPoint, pointOuter[0]);
+                sbPoint.AppendLine();
+
+                _lastClipperExportText = sbPoint.ToString();
                 return _lastClipperExportText;
             }
 
@@ -4429,7 +4442,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (ordered.Count == 0)
                     continue;
 
-                // Your cleanup + close (kills consecutive near-duplicates, restart-on-delete, then closes)
                 ReduceAndCloseBoundarySnapListInPlace(ordered);
                 if (ordered.Count < 3)
                     continue;
@@ -4446,10 +4458,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var lp = loopData[i].Loop;
                 var snapsClosed = loopData[i].OrderedSnaps;
 
-                // Build point runs between snaps (snap, [clipper..], snap)
                 var runs = BuildPointRunsBetweenSnapsInClipperOrder(lp.WorldPts, snapsClosed, SNAP_TOL);
 
-                // Convert runs -> LINE/ARC prims
                 var prims = BuildPythonFriendlyPrimsFromRuns(runs);
                 if (prims.Count == 0)
                     continue;
@@ -4465,7 +4475,7 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 }
             }
 
-            // 5) Emit ONLY what python should parse (no "===" banners, no snap dumps)
+            // 5) Emit ONLY what python should parse
             var sb = new System.Text.StringBuilder(256 * 1024);
 
             for (int i = 0; i < outerPyLoops.Count; i++)
@@ -4488,6 +4498,11 @@ namespace CNC_Improvements_gcode_solids.Utilities
             _lastClipperExportText = sb.ToString();
             return _lastClipperExportText;
         }
+
+
+
+
+
 
 
 
@@ -4550,6 +4565,85 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
 
             return sb.ToString();
+        }
+
+        // ------------------------------------------------------------
+        // SPECIAL CASE: "Point-only" toolpath
+        // If the mill path contains no motion (all LINEs with zero length),
+        // the swept shape is exactly one tool disc at that point.
+        // For the CLIPPER export + TrueShape render we emit the disc boundary
+        // as TWO ARC prims (a full circle).
+        // ------------------------------------------------------------
+        private bool TryBuildPointOnlyToolDiscPrims(out List<List<PyPrim>> outerPyLoops, out List<List<PyPrim>> islandPyLoops)
+        {
+            outerPyLoops = new List<List<PyPrim>>();
+            islandPyLoops = new List<List<PyPrim>>();
+
+            if (_segs == null || _segs.Count == 0)
+                return false;
+
+            // Must be all LINE and all zero-length, all at same coordinate (within tiny eps)
+            const double EPS = 1e-9;
+
+            var s0 = _segs[0];
+            if (s0 == null)
+                return false;
+
+            // Only GuidedTool path participates here (ClosedWire is handled separately)
+            if (s0.IsClosedWire)
+                return false;
+
+            double cx = s0.X1;
+            double cy = s0.Y1;
+
+            for (int i = 0; i < _segs.Count; i++)
+            {
+                var s = _segs[i];
+                if (s == null)
+                    return false;
+
+                if (!string.Equals(s.Type, "LINE", StringComparison.Ordinal))
+                    return false;
+
+                double dx = s.X2 - s.X1;
+                double dy = s.Y2 - s.Y1;
+                if ((dx * dx + dy * dy) > (EPS * EPS))
+                    return false; // has motion
+
+                // All points must coincide
+                if (Math.Abs(s.X1 - cx) > EPS || Math.Abs(s.Y1 - cy) > EPS)
+                    return false;
+
+                if (Math.Abs(s.X2 - cx) > EPS || Math.Abs(s.Y2 - cy) > EPS)
+                    return false;
+            }
+
+            double toolRad = ToolRadWorldForSeg(s0);
+            if (!double.IsFinite(toolRad) || toolRad <= 0.0)
+                return false;
+
+            // Build a full circle as TWO half arcs (CCW)
+            // Start at (+R,0) -> (-R,0) via (0,+R), then back via (0,-R)
+            var prims = new List<PyPrim>(2)
+    {
+        new PyPrim
+        {
+            Type = PyPrimType.Arc,
+            X1 = cx + toolRad, Y1 = cy,
+            Xm = cx,          Ym = cy + toolRad,
+            X2 = cx - toolRad, Y2 = cy
+        },
+        new PyPrim
+        {
+            Type = PyPrimType.Arc,
+            X1 = cx - toolRad, Y1 = cy,
+            Xm = cx,          Ym = cy - toolRad,
+            X2 = cx + toolRad, Y2 = cy
+        }
+    };
+
+            outerPyLoops.Add(prims);
+            return true;
         }
 
 
@@ -4719,6 +4813,32 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // (Must NOT show any windows here.)
             string exportText = BuildClipperExportText(includeIslands: true);
 
+            // ------------------------------------------------------------
+            // SPECIAL CASE: point-only toolpath
+            // Render from the exact same prims that export now emits.
+            // ------------------------------------------------------------
+            if (TryBuildPointOnlyToolDiscPrims(out var pointOuter, out var pointIslands))
+            {
+                if (Settings.Default.LogWindowShow)
+                {
+                    var sb = new System.Text.StringBuilder(64 * 1024);
+                    sb.AppendLine("=== CLIPPER EXPORT TEXT (USED BY EXPORT) ===");
+                    sb.AppendLine("includeIslands=true");
+                    sb.AppendLine();
+                    sb.AppendLine(exportText ?? "");
+                    sb.AppendLine();
+
+                    var win = new LogWindow("TrueShape Combined Logs", sb.ToString())
+                    {
+                        Owner = this
+                    };
+                    win.Show();
+                }
+
+                RenderPythonFriendlyPrimitiveLoops(pointOuter, pointIslands);
+                return;
+            }
+
             // IMPORTANT: Keep current zoom/pan. Do NOT Fit/Reset here.
 
             // 1) Build ALL candidate snap points (analytic)
@@ -4761,7 +4881,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 if (ordered.Count == 0)
                     continue;
 
-                // Your cleanup + close (kills consecutive near-duplicates, restarts after any removal, then closes)
                 ReduceAndCloseBoundarySnapListInPlace(ordered);
                 if (ordered.Count < 3)
                     continue;
@@ -4783,10 +4902,8 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 var lp = loopData[i].Loop;
                 var snapsClosed = loopData[i].OrderedSnaps;
 
-                // Build point runs between snaps (snap, [clipper..], snap)
                 var runs = BuildPointRunsBetweenSnapsInClipperOrder(lp.WorldPts, snapsClosed, SNAP_TOL);
 
-                // Convert runs -> LINE/ARC prims
                 var prims = BuildPythonFriendlyPrimsFromRuns(runs);
                 if (prims.Count == 0)
                     continue;
@@ -4798,33 +4915,21 @@ namespace CNC_Improvements_gcode_solids.Utilities
             }
 
             // 6) SINGLE COMBINED LOG WINDOW (ONLY when LogWindowShow is enabled)
-            // Order requested:
-            //   (0) export text
-            //   (1) python-friendly first (outer then islands, with easy parse headers)
-            //   (2) all candidate snaps
-            //   (3) ordered reduced sets (outer then islands)
             if (Settings.Default.LogWindowShow)
             {
                 var inv = CultureInfo.InvariantCulture;
                 var sb = new System.Text.StringBuilder(512 * 1024);
 
-                // ------------------------------------------------------------
-                // (0) EXPORT TEXT (what FreeCAD export uses)
-                // ------------------------------------------------------------
                 sb.AppendLine("=== CLIPPER EXPORT TEXT (USED BY EXPORT) ===");
                 sb.AppendLine($"includeIslands=true");
                 sb.AppendLine();
                 sb.AppendLine(exportText ?? "");
                 sb.AppendLine();
 
-                // ------------------------------------------------------------
-                // (1) PYTHON-FRIENDLY FIRST
-                // ------------------------------------------------------------
                 sb.AppendLine("=== PYTHON-FRIENDLY (FREECAD) BOUNDARY PRIMS ===");
                 sb.AppendLine($"MIN_ARC_POINTS={MIN_ARC_POINTS}  SNAP_TOL={SNAP_TOL.ToString("0.###", inv)}  keyDp={SNAP_KEY_DECIMALS}");
                 sb.AppendLine();
 
-                // OUTER loops
                 for (int i = 0; i < outerPyLoops.Count; i++)
                 {
                     sb.AppendLine($"--- LOOP {i}  OUTER ---");
@@ -4832,7 +4937,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     sb.AppendLine();
                 }
 
-                // ISLAND loops
                 for (int i = 0; i < islandPyLoops.Count; i++)
                 {
                     sb.AppendLine($"--- LOOP {i}  ISLAND ---");
@@ -4840,14 +4944,10 @@ namespace CNC_Improvements_gcode_solids.Utilities
                     sb.AppendLine();
                 }
 
-                // ------------------------------------------------------------
-                // (2) ALL CANDIDATE SNAPS
-                // ------------------------------------------------------------
                 sb.AppendLine("=== ALL CANDIDATE SNAP POINTS (x y z) ===");
                 sb.AppendLine($"segs={_segs.Count}  entities={ents.Count}  snaps={candSnaps.Count}");
                 sb.AppendLine();
 
-                // keep stable ordering for sanity
                 var candOrdered = candSnaps
                     .OrderBy(p => p.X)
                     .ThenBy(p => p.Y)
@@ -4856,9 +4956,6 @@ namespace CNC_Improvements_gcode_solids.Utilities
                 AppendSnapListNumericOnly(sb, candOrdered);
                 sb.AppendLine();
 
-                // ------------------------------------------------------------
-                // (3) ORDERED REDUCED SETS (OUTER then ISLANDS)
-                // ------------------------------------------------------------
                 sb.AppendLine("=== CLIPPER-ORDERED REDUCED SNAP POINTS (x y z) ===");
                 sb.AppendLine($"OUTER={outerLoopsOrdered.Count}  ISLANDS={islandLoopsOrdered.Count}  SNAP_TOL={SNAP_TOL.ToString("0.###", inv)}");
                 sb.AppendLine();
@@ -4887,6 +4984,13 @@ namespace CNC_Improvements_gcode_solids.Utilities
             // 7) Display: render EXACTLY from the Python-friendly primitives (no Fit/Reset)
             RenderPythonFriendlyPrimitiveLoops(outerPyLoops, islandPyLoops);
         }
+
+
+
+
+
+
+
 
 
     }

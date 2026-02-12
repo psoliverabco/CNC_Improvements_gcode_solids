@@ -16,6 +16,9 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using CNC_Improvements_gcode_solids;
+
+
 
 namespace CNC_Improvements_gcode_solids.Pages
 {
@@ -291,23 +294,42 @@ namespace CNC_Improvements_gcode_solids.Pages
             if (_isApplyingDrillSet)
                 return;
 
-            var set = GetSelectedDrillSetSafe();
-            if (set == null)
+            // MainWindow (no GetMain helper)
+            var main = Application.Current?.MainWindow as MainWindow;
+            if (main == null)
                 return;
 
-            // Scalars only; do NOT rebuild RegionLines here
-            BuildDrillRegion.EditExisting(
-                set,
-                coordMode: (RadPolar?.IsChecked == true) ? "Polar" : "Cartesian",
-                txtChamfer: TxtChamfer?.Text ?? "",
-                txtHoleDia: TxtHoleDia?.Text ?? "",
-                txtPointAngle: TxtPointAngle?.Text ?? "",
-                txtZHoleTop: TxtZHoleTop?.Text ?? "",
-                txtZPlusExt: TxtZPlusExt?.Text ?? ""
-            );
+            // IMPORTANT: call the method with ()  (prevents "method group" errors)
+            var sets = main.GetBatchSelectedDrillSets();
+            if (sets == null || sets.Count == 0)
+                return;
 
-            ResolveDrillAndUpdateStatus(set, GcodeLines);
+            string coordMode = (RadPolar?.IsChecked == true) ? "Polar" : "Cartesian";
+            string txtChamfer = TxtChamfer?.Text ?? "";
+            string txtHoleDia = TxtHoleDia?.Text ?? "";
+            string txtPointAngle = TxtPointAngle?.Text ?? "";
+            string txtZHoleTop = TxtZHoleTop?.Text ?? "";
+            string txtZPlusExt = TxtZPlusExt?.Text ?? "";
+
+            foreach (var set in sets)
+            {
+                if (set == null) continue;
+
+                BuildDrillRegion.EditExisting(
+                    set,
+                    coordMode: coordMode,
+                    txtChamfer: txtChamfer,
+                    txtHoleDia: txtHoleDia,
+                    txtPointAngle: txtPointAngle,
+                    txtZHoleTop: txtZHoleTop,
+                    txtZPlusExt: txtZPlusExt
+                );
+
+                ResolveDrillAndUpdateStatus(set, GcodeLines);
+            }
         }
+
+
 
         /// <summary>
         /// Stores the current depth + holes selection.

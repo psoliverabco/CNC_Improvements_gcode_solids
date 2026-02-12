@@ -460,27 +460,48 @@ namespace CNC_Improvements_gcode_solids.Pages
         {
             if (_isApplyingMillSet) return;
 
-            var set = GetSelectedMillSetSafe();
-            if (set == null)
+            // APPLY TO ALL HIGHLIGHTED MILL SETS (MainWindow list multi-select)
+            var sets = GetMain().GetBatchSelectedMillSets();
+            if (sets == null || sets.Count == 0)
                 return;
 
-            // Route ALL writes through the builder
-            BuildMillRegion.EditExisting(
-                set,
-                txtToolDia: TxtToolDia?.Text ?? "",
-                txtToolLen: TxtToolLen?.Text ?? "",
-                fuseAll: (Fuseall?.IsChecked == true) ? "1" : "0",
-                clipper: (Clipper?.IsChecked == true) ? "1" : "0",
-                removeSplitter: (RemoveSplitter?.IsChecked == true) ? "1" : "0",
-                clipperIsland: (ClipperIsland?.IsChecked == true) ? "1" : "0",
-                guidedTool: (GuidedTool?.IsChecked == true) ? "1" : "0",
-                closedWire: (ClosedWire?.IsChecked == true) ? "1" : "0",
-                closedInner: (ClosedInner?.IsChecked == true) ? "1" : "0",
-                closedOuter: (ClosedOuter?.IsChecked == true) ? "1" : "0"
-            );
+            string toolDia = TxtToolDia?.Text ?? "";
+            string toolLen = TxtToolLen?.Text ?? "";
 
-            ResolveAndUpdateMillStatus(set, GetGcodeLines());
+            string fuseAll = (Fuseall?.IsChecked == true) ? "1" : "0";
+            string clipper = (Clipper?.IsChecked == true) ? "1" : "0";
+            string removeSplitter = (RemoveSplitter?.IsChecked == true) ? "1" : "0";
+            string clipperIsland = (ClipperIsland?.IsChecked == true) ? "1" : "0";
+            string guidedTool = (GuidedTool?.IsChecked == true) ? "1" : "0";
+            string closedWire = (ClosedWire?.IsChecked == true) ? "1" : "0";
+            string closedInner = (ClosedInner?.IsChecked == true) ? "1" : "0";
+            string closedOuter = (ClosedOuter?.IsChecked == true) ? "1" : "0";
+
+            var allLines = GetGcodeLines();
+
+            foreach (var set in sets)
+            {
+                if (set == null) continue;
+
+                // Route ALL writes through the builder
+                BuildMillRegion.EditExisting(
+                    set,
+                    txtToolDia: toolDia,
+                    txtToolLen: toolLen,
+                    fuseAll: fuseAll,
+                    clipper: clipper,
+                    removeSplitter: removeSplitter,
+                    clipperIsland: clipperIsland,
+                    guidedTool: guidedTool,
+                    closedWire: closedWire,
+                    closedInner: closedInner,
+                    closedOuter: closedOuter
+                );
+
+                ResolveAndUpdateMillStatus(set, allLines);
+            }
         }
+
 
 
 
@@ -1461,19 +1482,29 @@ namespace CNC_Improvements_gcode_solids.Pages
                 return v.ToString("0.###############", CultureInfo.InvariantCulture);
             }
 
-            List<string> outLines = new();
+            const double EPS = 1e-9;
 
-           
+            List<string> outLines = new();
 
             foreach (var m in moves)
             {
                 if (m.Type == "LINE")
                 {
-                    outLines.Add($"LINE {F(m.Xs)} {F(m.Ys)}   {F(m.Xe)} {F(m.Ye)}");
+                    double dx = m.Xe - m.Xs;
+                    double dy = m.Ye - m.Ys;
+
+                    // SPECIAL CASE: point-only segment
+                    if ((dx * dx + dy * dy) <= (EPS * EPS))
+                    {
+                        outLines.Add($"POINT {F(m.Xs)} {F(m.Ys)}");
+                    }
+                    else
+                    {
+                        outLines.Add($"LINE {F(m.Xs)} {F(m.Ys)}   {F(m.Xe)} {F(m.Ye)}");
+                    }
                 }
                 else if (m.Type == "ARC_CW" || m.Type == "ARC_CCW")
                 {
-                    // ALWAYS emit 3-point ARC3_* for the python parser (never emit "R ...")
                     GetArc3Points2D(
                         m,
                         out double xs, out double ys,
@@ -1491,6 +1522,7 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             return outLines;
         }
+
 
 
 
@@ -2756,14 +2788,13 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
 
             MotionMode mode = MotionMode.None;
 
+            // -----------------------------
             // modal motion before region start
+            // -----------------------------
             for (int i = regionStartIndex - 1; i >= 0; i--)
             {
                 if (TryGetLastMotionGCode(allLines[i], out int g))
                 {
-                    //if (g == 0)
-                    //throw new Exception($"ERROR: Region begins under modal G00 (rapid). Last motion before region is G00 at line {i + 1}.");
-
                     mode = (g == 1) ? MotionMode.G1
                          : (g == 2) ? MotionMode.G2
                          : MotionMode.G3;
@@ -2771,15 +2802,24 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 }
             }
 
+            // TINY eps to detect "same point" without being too aggressive.
+            // This is only used for degenerate detection, NOT snapping geometry.
+            const double EPS = 1e-12;
+
+            static bool SamePt(double ax, double ay, double bx, double by, double eps)
+            {
+                return Math.Abs(ax - bx) <= eps && Math.Abs(ay - by) <= eps;
+            }
+
+            // -----------------------------
+            // main parse loop
+            // -----------------------------
             for (int k = 0; k < regionLines.Count; k++)
             {
                 string raw = regionLines[k];
                 string line = raw.ToUpperInvariant().Trim();
 
                 int physicalIndex = regionStartIndex + k;
-
-                //if (TryGetLastMotionGCode(line, out int gHere) && gHere == 0)
-                //throw new Exception($"ERROR: G00 rapid move found inside region at line {physicalIndex + 1}.");
 
                 if (TryGetLastMotionGCode(line, out int gMotion))
                 {
@@ -2812,9 +2852,13 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                     continue;
                 }
 
+                // ============================================================
+                // G1 LINE
+                // ============================================================
                 if (mode == MotionMode.G1)
                 {
-                    if (lastX == newX && lastY == newY)
+                    // RULE: discard 0-length lines
+                    if (SamePt(lastX, lastY, newX, newY, EPS))
                     {
                         lastX = newX;
                         lastY = newY;
@@ -2830,6 +2874,9 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                         Ye = newY
                     });
                 }
+                // ============================================================
+                // G2/G3 ARC
+                // ============================================================
                 else if (mode == MotionMode.G2 || mode == MotionMode.G3)
                 {
                     double I = 0, J = 0, R = 0;
@@ -2847,13 +2894,73 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                     if (useIJ)
                         R = 0.0;
 
-                    if (lastX == newX && lastY == newY)
+                    bool endEqualsStart = SamePt(lastX, lastY, newX, newY, EPS);
+
+                    // ------------------------------------------------------------
+                    // SPECIAL CASE A: FULL CIRCLE IJ ARC (end == start)
+                    // Split into two 180 arcs: S->O and O->S, with same I/J.
+                    // Only valid/allowed when center is known (IJ).
+                    // ------------------------------------------------------------
+                    if (endEqualsStart)
                     {
-                        lastX = newX;
-                        lastY = newY;
-                        continue;
+                        if (useIJ)
+                        {
+                            // Center from IJ (Fanuc: I/J are offsets from START)
+                            double cx = lastX + I;
+                            double cy = lastY + J;
+
+                            // Opposite point across the center (180deg from start)
+                            double ox = 2.0 * cx - lastX;
+                            double oy = 2.0 * cy - lastY;
+
+                            string arcType = (mode == MotionMode.G2) ? "ARC_CW" : "ARC_CCW";
+
+                            // Arc 1: S -> O
+                            moves.Add(new GeoMove
+                            {
+                                Type = arcType,
+                                Xs = lastX,
+                                Ys = lastY,
+                                Xe = ox,
+                                Ye = oy,
+                                I = I,
+                                J = J,
+                                R = 0.0
+                            });
+
+                            // Arc 2: O -> S
+                            // IMPORTANT: I/J are relative to the start of THIS arc (O),
+                            // so recompute offsets from O to the SAME center.
+                            double i2 = cx - ox;
+                            double j2 = cy - oy;
+
+                            moves.Add(new GeoMove
+                            {
+                                Type = arcType,
+                                Xs = ox,
+                                Ys = oy,
+                                Xe = lastX,
+                                Ye = lastY,
+                                I = i2,
+                                J = j2,
+                                R = 0.0
+                            });
+
+                            // Modal end point stays the same as the line's X/Y (which equals start)
+                            lastX = newX;
+                            lastY = newY;
+                            continue;
+                        }
+                        else
+                        {
+                            // R-mode with end==start is under-defined; discard it (or you could throw).
+                            lastX = newX;
+                            lastY = newY;
+                            continue;
+                        }
                     }
 
+                    // Normal arc (non-degenerate)
                     moves.Add(new GeoMove
                     {
                         Type = (mode == MotionMode.G2) ? "ARC_CW" : "ARC_CCW",
@@ -2871,8 +2978,32 @@ TRANSFORM_TZ  = {tz.ToString("0.###", inv)}
                 lastY = newY;
             }
 
+            // ------------------------------------------------------------
+            // SPECIAL CASE B: region produces NO motion at all.
+            // Inject a tiny 2-arc micro-circle around the start point.
+            // (Keeps downstream viewer/freecad alive for "point tool" regions.)
+            // ------------------------------------------------------------
+            if (moves.Count == 0)
+            {
+                // Point-only toolpath: do NOT invent a tiny circle.
+                // Keep it as zero-motion so the downstream "tool disc at point" special-case can kick in.
+                moves.Add(new GeoMove
+                {
+                    Type = "LINE",
+                    Xs = startX,
+                    Ys = startY,
+                    Xe = startX,
+                    Ye = startY,
+                    I = 0.0,
+                    J = 0.0,
+                    R = 0.0
+                });
+            }
+
+
             return moves;
         }
+
 
 
 

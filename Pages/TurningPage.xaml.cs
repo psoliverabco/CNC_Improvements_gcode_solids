@@ -412,27 +412,40 @@ namespace CNC_Improvements_gcode_solids.Pages
         {
             if (_isApplyingTurnSet) return;
 
-            var set = GetSelectedTurnSetSafe();
-            if (set == null)
+            // APPLY TO ALL HIGHLIGHTED TURN SETS (MainWindow list multi-select)
+            var sets = GetMain().GetBatchSelectedTurnSets();
+            if (sets == null || sets.Count == 0)
                 return;
 
-            // ALL WRITES go through the canonical editor
-            CNC_Improvements_gcode_solids.SetManagement.Builders.BuildTurnRegion.EditExisting(
-                rs: set,
-                regionLines: null,              // leave RegionLines unchanged
-                startXIndex: null,
-                startZIndex: null,
-                endXIndex: null,
-                endZIndex: null,
-                toolUsage: _toolComp.Usage ?? "OFF",
-                quadrant: _toolComp.Quadrant.ToString(CultureInfo.InvariantCulture),
-                txtZExt: TxtZExt?.Text ?? "",
-                nRad: NRad?.Text ?? "",
-                snapshotDefaults: null
-            );
+            string usage = _toolComp.Usage ?? "OFF";
+            string quad = _toolComp.Quadrant.ToString(CultureInfo.InvariantCulture);
+            string zExt = TxtZExt?.Text ?? "";
+            string nRad = NRad?.Text ?? "";
 
-            ResolveAndUpdateStatus(set, GetGcodeLines());
+            var allLines = GetGcodeLines();
+
+            foreach (var set in sets)
+            {
+                if (set == null) continue;
+
+                CNC_Improvements_gcode_solids.SetManagement.Builders.BuildTurnRegion.EditExisting(
+                    rs: set,
+                    regionLines: null,              // leave RegionLines unchanged
+                    startXIndex: null,
+                    startZIndex: null,
+                    endXIndex: null,
+                    endZIndex: null,
+                    toolUsage: usage,
+                    quadrant: quad,
+                    txtZExt: zExt,
+                    nRad: nRad,
+                    snapshotDefaults: null
+                );
+
+                ResolveAndUpdateStatus(set, allLines);
+            }
         }
+
 
         // -------------------------
         // IGcodePage

@@ -95,6 +95,9 @@ def parse_toolpath(text):
             tool_len = float(parts[1])
         elif key == ""ZPLANE"" and len(parts) >= 2:
             z_plane = float(parts[1])
+        elif key == ""POINT"" and len(parts) >= 3:
+            x, y = map(float, parts[1:3])
+            segments.append((""POINT"", (x, y)))
         elif key == ""LINE"" and len(parts) >= 5:
             x1, y1, x2, y2 = map(float, parts[1:5])
             segments.append((""LINE"", (x1, y1, x2, y2)))
@@ -271,6 +274,13 @@ def main():
                 x1, y1, x2, y2 = data
                 shape = make_line_sweep(x1, y1, x2, y2, tool_rad, tool_len, z_plane)
                 name = ""Seg_{:02d}_LINE"".format(idx)
+
+            elif stype == ""POINT"":
+                x, y = data
+                p = App.Vector(x, y, z_plane)
+                shape = Part.makeCylinder(tool_rad, tool_len, p, App.Vector(0.0, 0.0, 1.0))
+                name = ""Seg_{:02d}_POINT"".format(idx)
+
 
             elif stype in (""ARC3_CW"", ""ARC3_CCW""):
                 x1, y1, xm, ym, x2, y2 = data

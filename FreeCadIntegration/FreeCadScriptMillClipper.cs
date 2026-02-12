@@ -118,28 +118,25 @@ def _bake_placement_into_shape(shape, placement):
     except Exception:
         pass
 
-    # last resort
     out = shape.copy()
     try:
         tg = out.transformGeometry(m)
         if tg is not None:
             out = tg
     except Exception:
-        # If even this fails, return the copy unchanged (better than crash)
         pass
     return out
 
 # --------------------------------------------------------------------
-# Parse new embedded loop code:
-#   LINE x1 y1   x2 y2
-#   ARC  x1 y1   xm ym   x2 y2
-# We map ARC -> (""ARC3_CCW"", data) so build_edges() stays unchanged.
+# Parse embedded loop code:
+#   LINE x1 y1 x2 y2
+#   ARC  x1 y1 xm ym x2 y2
 # --------------------------------------------------------------------
 def parse_loops(text):
     tool_len = None
     z_plane = None
 
-    loops = []  # [{type:'OUTER'/'ISLAND', id:int, segs:[(stype,data)], poly:[(x,y),...]}]
+    loops = []  # list of dicts: {type:'OUTER'/'ISLAND', id:int, segs:[(stype,data)], poly:[(x,y),...]}
     cur = None
 
     for raw in text.splitlines():
@@ -165,9 +162,9 @@ def parse_loops(text):
             t = ""OUTER"" if ""OUTER"" in up else (""ISLAND"" if ""ISLAND"" in up else ""UNKNOWN"")
             loop_id = -1
             try:
-                parts = up.replace(""-"", "" "").split()
-                k = parts.index(""LOOP"")
-                loop_id = int(parts[k + 1])
+                parts2 = up.replace(""-"", "" "").split()
+                k = parts2.index(""LOOP"")
+                loop_id = int(parts2[k + 1])
             except Exception:
                 loop_id = len(loops)
 
@@ -187,13 +184,22 @@ def parse_loops(text):
         if key == ""LINE"" and len(parts) >= 5:
             x1, y1, x2, y2 = map(float, parts[1:5])
             cur[""segs""].append((""LINE"", (x1, y1, x2, y2)))
+
+            # polygon support
             cur[""poly""].append((x1, y1))
+            cur[""poly""].append((x2, y2))
             continue
 
         if key == ""ARC"" and len(parts) >= 7:
             x1, y1, xm, ym, x2, y2 = map(float, parts[1:7])
+            # Treat ARC as an ARC3 for building edges
             cur[""segs""].append((""ARC3_CCW"", (x1, y1, xm, ym, x2, y2)))
+
+            # IMPORTANT:
+            # Containment tests require 3+ points. For arcs, add start+mid+end.
             cur[""poly""].append((x1, y1))
+            cur[""poly""].append((xm, ym))
+            cur[""poly""].append((x2, y2))
             continue
 
     if tool_len is None:
@@ -203,12 +209,22 @@ def parse_loops(text):
     if not loops:
         raise ValueError(""No LOOP blocks found"")
 
-    # generator guarantees closed; remove duplicate last point if present
+    # clean poly: drop consecutive dupes
     for L in loops:
         poly = L[""poly""]
-        if len(poly) >= 2:
-            if _dist2(poly[0][0], poly[0][1], poly[-1][0], poly[-1][1]) <= 1e-12:
-                poly.pop()
+        if not poly:
+            continue
+
+        cleaned = [poly[0]]
+        for p in poly[1:]:
+            if _dist2(p[0], p[1], cleaned[-1][0], cleaned[-1][1]) > 1e-12:
+                cleaned.append(p)
+
+        # remove closing duplicate if present
+        if len(cleaned) >= 2 and _dist2(cleaned[0][0], cleaned[0][1], cleaned[-1][0], cleaned[-1][1]) <= 1e-12:
+            cleaned.pop()
+
+        L[""poly""] = cleaned
 
     return tool_len, z_plane, loops
 
@@ -272,14 +288,14 @@ def main():
     print(""  ZPLANE  ="", z_plane)
     print(""  OUTER   ="", len(outers))
     print(""  ISLAND  ="", len(islands))
-    print(""Transform (to be baked into B-rep at end):"")
+    print(""Transform (baked into B-rep):"")
     print(""  RotZ ="", TRANSFORM_ROTZ, ""deg"")
     print(""  RotY ="", TRANSFORM_ROTY, ""deg"")
     print(""  T    ="", (TRANSFORM_TX, TRANSFORM_TY, TRANSFORM_TZ))
 
     doc = App.newDocument(""Clipper_OuterMinusIslands_Baked"")
 
-    # Build outer polygons for containment assignment (supports multiple OUTER)
+    # Build outer polygons for island assignment
     outer_polys = []
     for o in outers:
         if len(o[""poly""]) < 3:
@@ -321,9 +337,7 @@ def main():
             except Exception:
                 pass
 
-        # ------------------------------------------------------------
-        # BAKE TRANSFORM INTO GEOMETRY HERE (no obj.Placement)
-        # ------------------------------------------------------------
+        # Bake transform into geometry
         outer_solid = _bake_placement_into_shape(outer_solid, PlacementTransform)
 
         obj = doc.addObject(""Part::Feature"", ""Outer_{:03d}"".format(oi))
@@ -345,6 +359,7 @@ def main():
         return 5
 
 raise SystemExit(main())
+
 
 
 

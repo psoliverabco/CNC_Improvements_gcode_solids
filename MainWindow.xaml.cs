@@ -167,6 +167,48 @@ namespace CNC_Improvements_gcode_solids
         }
 
 
+        // ============================================================
+        // MULTI-SELECT BATCH HELPERS (Turn/Mill/Drill)
+        // Used by pages when user edits scalar params (quadrant/tool dia/drill dia etc).
+        // If no multi-selection, falls back to the single Selected*Set.
+        // ============================================================
+        private static List<RegionSet> GetBatchSelectedSets(ListBox lb, RegionSet? fallback)
+        {
+            var list = new List<RegionSet>();
+
+            if (lb?.SelectedItems != null && lb.SelectedItems.Count > 0)
+            {
+                foreach (var obj in lb.SelectedItems)
+                {
+                    if (obj is RegionSet rs)
+                        list.Add(rs);
+                }
+            }
+
+            if (list.Count == 0 && fallback != null)
+                list.Add(fallback);
+
+            return list;
+        }
+
+        public List<RegionSet> GetBatchSelectedTurnSets()
+        {
+            return GetBatchSelectedSets(CmbTurnSets, SelectedTurnSet);
+        }
+
+        public List<RegionSet> GetBatchSelectedMillSets()
+        {
+            return GetBatchSelectedSets(CmbMillSets, SelectedMillSet);
+        }
+
+        public List<RegionSet> GetBatchSelectedDrillSets()
+        {
+            return GetBatchSelectedSets(CmbDrillSets, SelectedDrillSet);
+        }
+
+
+
+
 
         // ------------------------------
         // RTB FIND (TxtGcode right-click)
