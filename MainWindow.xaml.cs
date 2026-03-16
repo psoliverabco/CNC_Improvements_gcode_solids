@@ -2133,6 +2133,12 @@ namespace CNC_Improvements_gcode_solids
 
                         // Reset transforms to default/standard (Import null then reconcile)
                         _transMatrixPage.ImportTransformDtos(null);
+
+
+
+
+
+
                         _transMatrixPage.RefreshFromMainWindow(this);
 
                         _selectedTurnSet = null;
@@ -2223,8 +2229,11 @@ namespace CNC_Improvements_gcode_solids
                         foreach (var s in dto.DrillSets) DrillSets.Add(FromDto(s));
 
                     // Load transformation matrices (independent block), then reconcile with current sets
+                  
+
                     _transMatrixPage.ImportTransformDtos(dto.TransformMatrices);
                     _transMatrixPage.RefreshFromMainWindow(this);
+                    
 
                     _selectedTurnSet = null;
                     _selectedMillSet = null;

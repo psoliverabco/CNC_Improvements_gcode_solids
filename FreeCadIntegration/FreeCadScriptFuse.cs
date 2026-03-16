@@ -16,18 +16,19 @@ namespace CNC_Improvements_gcode_solids.FreeCadIntegration
         internal const string HeadPY = @"
 
 # ============================================================
-# CNC_Improvements_gcode_solids : MERGE+FUSE+SUBTRACT SCRIPT (with logging)
+# CNC_Improvements_gcode_solids : MERGE+FUSE+SUBTRACT SCRIPT (CLI FAST, SAME BEHAVIOR)
 #
-# CHANGE (your request):
-# - REMOVE invalid-topology testing (it did nothing for you)
-# - AFTER TURN FUSE: aggressively remove splitter edges / merge coplanar faces
-#   to avoid drill tools intersecting a coplanar face seam edge.
-#
-# Rules:
+# SAME BEHAVIOR AS YOUR ORIGINAL:
 # - TURN: fuse sequentially (FATAL on fail)
-# - MILL: cut ONLY when MILL step has exactly 1 solid
-#         * if MILL step has >1 solids: export those solids as extra bodies (no cut)
-# - DRILL: always subtract (per solid, continue on fail)
+# - MILL: if MILL STEP has exactly 1 solid => CUT
+#         if >1 solids => EXPORT ONLY (no cut)
+# - DRILL: subtract ALL solids from each DRILL STEP (continue on per-solid fail)
+#
+# FAST CHANGES:
+# - NO common(), NO volume calcs
+# - minimal logging
+# - removeSplitter only at end (and optional after TURN)
+# - one recompute before export
 #
 # SOLIDS-ONLY export.
 # Log file: <OUT_STEP without extension>.log
@@ -41,6 +42,14 @@ import datetime
 
 import FreeCAD as App
 import Part
+
+
+# -----------------------------
+# SETTINGS
+# -----------------------------
+DO_TURN_SPLITTER_CLEANUP = False
+DO_FINAL_SPLITTER_CLEANUP = True
+SPLITTER_PASSES = 2
 
 
 # -----------------------------
@@ -94,22 +103,16 @@ def _log(msg):
     try:
         if _LOG_FH is not None:
             _LOG_FH.write(s + ""\n"")
-            _LOG_FH.flush()
     except Exception:
         pass
 
 
 def _log_header(out_step):
     _log(""============================================================"")
-    _log(""NPC MERGE SCRIPT START"")
+    _log(""NPC FUSE SCRIPT START (CLI FAST, SAME BEHAVIOR)"")
     _log(""Time (local): %s"" % datetime.datetime.now().strftime(""%Y-%m-%d %H:%M:%S""))
-    try:
-        _log(""Time (UTC)  : %s"" % datetime.datetime.utcnow().strftime(""%Y-%m-%d %H:%M:%S""))
-    except Exception:
-        pass
     _log(""OUT_STEP    : %s"" % out_step)
     _log(""LOG_PATH    : %s"" % _LOG_PATH)
-    _log(""Python      : %s"" % sys.version.replace(""\n"", "" ""))
     try:
         _log(""FreeCAD     : %s"" % App.Version())
     except Exception:
@@ -142,17 +145,19 @@ def _load_step_shape(step_path):
     return shp
 
 
-def _solids_only(shape, label):
+def _solids_list_or_throw(shape, label):
     if shape is None or shape.isNull():
         raise Exception(""%s: shape is null."" % label)
-
     solids = list(shape.Solids)
-    if len(solids) == 0:
+    if not solids:
         raise Exception(""%s: result has ZERO solids."" % label)
+    return solids
 
+
+def _as_solids_only_shape(shape, label):
+    solids = _solids_list_or_throw(shape, label)
     if len(solids) == 1:
         return solids[0]
-
     return Part.Compound(solids)
 
 
@@ -165,53 +170,16 @@ def _try_remove_splitter(shape):
         return shape
 
 
-def _aggressive_splitter_cleanup(shape, label):
-    # Your goal: collapse coplanar face seams / remove splitter edges after TURN fuse.
+def _splitter_cleanup(shape, label):
     if shape is None or shape.isNull():
         return shape
-
     s = shape
-    # removeSplitter can be order-dependent; run a few passes
-    for k in range(3):
+    for _ in range(max(0, int(SPLITTER_PASSES))):
         s2 = _try_remove_splitter(s)
         if s2 is None or s2.isNull():
             break
         s = s2
-
-    # optional: try a second strategy used by some OCCT builds (refineShape)
-    # (safe: if unavailable it just skips)
-    try:
-        s2 = s.removeSplitter()
-        if s2 and not s2.isNull():
-            s = s2
-    except Exception:
-        pass
-
-    # Ensure solids-only output
-    s = _solids_only(s, ""%s: after splitter cleanup solids-only"" % label)
-    return s
-
-
-def _read_step_solids(step_path, label):
-    s = _load_step_shape(step_path)
-    solids = list(s.Solids)
-    if len(solids) == 0:
-        raise Exception(""%s: STEP contains 0 solids: %s"" % (label, step_path))
-    return solids
-
-
-def _fuse_solids_in_order(solids, label):
-    if not solids:
-        raise Exception(""%s: no solids to fuse."" % label)
-
-    base = solids[0]
-    base = _solids_only(base, ""%s: init solids-only"" % label)
-
-    for i in range(1, len(solids)):
-        base = _try_remove_splitter(base.fuse(solids[i]))
-        base = _solids_only(base, ""%s: fuse step %d/%d solids-only"" % (label, i + 1, len(solids)))
-
-    return base
+    return _as_solids_only_shape(s, ""%s: after splitter cleanup"" % label)
 
 
 def _bb_overlap(bb1, bb2):
@@ -229,76 +197,10 @@ def _bb_overlap(bb1, bb2):
         return True
 
 
-def _shape_volume(shape):
-    if shape is None or shape.isNull():
-        return 0.0
-    try:
-        solids = list(shape.Solids)
-        if solids:
-            return float(sum(s.Volume for s in solids))
-        return float(shape.Volume)
-    except Exception:
-        return 0.0
-
-
-def _cut_one_logged(base, tool, label):
-    if base is None or base.isNull():
-        raise Exception(""%s: base is null before cut."" % label)
-    if tool is None or tool.isNull():
-        raise Exception(""%s: tool is null before cut."" % label)
-
-    pre_v = _shape_volume(base)
-
-    # intersection volume (diagnostic)
-    inter_v = 0.0
-    try:
-        inter = base.common(tool)
-        inter_v = _shape_volume(inter)
-    except Exception:
-        inter_v = 0.0
-
-    # bboxes (diagnostic)
-    try:
-        bbA = base.BoundBox
-        bbT = tool.BoundBox
-        _log(""%s: BB_BASE [%.3f..%.3f, %.3f..%.3f, %.3f..%.3f]  BB_TOOL [%.3f..%.3f, %.3f..%.3f, %.3f..%.3f]"" % (
-            label,
-            bbA.XMin, bbA.XMax, bbA.YMin, bbA.YMax, bbA.ZMin, bbA.ZMax,
-            bbT.XMin, bbT.XMax, bbT.YMin, bbT.YMax, bbT.ZMin, bbT.ZMax
-        ))
-    except Exception:
-        pass
-
-    _log(""%s: PRE_VOL=%.6f  INTER_VOL=%.6f"" % (label, pre_v, inter_v))
-
-    out = _try_remove_splitter(base.cut(tool))
-    out = _solids_only(out, ""%s: cut result solids-only"" % label)
-
-    post_v = _shape_volume(out)
-    _log(""%s: POST_VOL=%.6f  DELTA=%.6f"" % (label, post_v, (pre_v - post_v)))
-
-    return out
-
-
-def _export_step_objects(doc_objs, out_step_path):
-    out_step_path = _norm_step_path(out_step_path)
-    if not out_step_path:
-        raise Exception(""OUT_STEP is empty."")
-
-    out_dir = os.path.dirname(out_step_path)
-    if out_dir and not os.path.isdir(out_dir):
-        os.makedirs(out_dir, exist_ok=True)
-
-    _log(""EXPORT: %s"" % out_step_path)
-    Part.export(doc_objs, out_step_path)
-
-    if (not os.path.isfile(out_step_path)) or (os.path.getsize(out_step_path) <= 0):
-        raise Exception(""OUT_STEP was not created (or is empty)."")
-
-
 # ============================================================
-# USER-EMITTED VARIABLES GO HERE (your C# writes these)
+# USER-EMITTED VARIABLES GO HERE
 # ============================================================
+
 
 
 
@@ -343,11 +245,8 @@ def main():
     mill_paths = _as_path_list(Mill_steps, ""Mill_steps"")
     drill_paths = _as_path_list(Drill_steps, ""Drill_steps"")
 
-    _log(""INPUT COUNTS:"")
-    _log(""  TURN  : %d"" % len(turn_paths))
-    _log(""  MILL  : %d"" % len(mill_paths))
-    _log(""  DRILL : %d"" % len(drill_paths))
-    _log("""")
+    _log(""INPUT COUNTS: TURN=%d  MILL=%d  DRILL=%d"" %
+         (len(turn_paths), len(mill_paths), len(drill_paths)))
 
     _require_files(turn_paths, ""TURN"")
     if mill_paths:
@@ -355,264 +254,160 @@ def main():
     if drill_paths:
         _require_files(drill_paths, ""DRILL"")
 
-    doc = App.newDocument(""NPC_MERGE"")
-
-    fuse_ok = 0
-    fuse_fail = 0
-
-    mill_gate_cut = 0
-    mill_gate_export_only = 0
-    mill_cut_ok = 0
-    mill_cut_fail = 0
-    mill_cut_skipped = []
-    mill_export_only_count = 0
-
-    drill_read_ok = 0
-    drill_read_fail = 0
-    drill_cut_ok = 0
-    drill_cut_fail = 0
-    drill_cut_skipped = []
+    doc = App.newDocument(""NPC_FUSE_CLI_FAST_SAME"")
 
     # -----------------------------
-    # 1) TURN fuse sequentially (FATAL on fail)
+    # 1) TURN fuse (fatal)
     # -----------------------------
-    _log(""=== TURN: FUSE (sequential order) ==="")
+    _log("""")
+    _log(""=== TURN: FUSE ==="")
+
     turn_base = None
 
     for i, p in enumerate(turn_paths):
-        t1 = time.time()
         fn = os.path.basename(p)
+        shp = _load_step_shape(p)
+        solids = _solids_list_or_throw(shp, ""TURN %s"" % fn)
 
-        try:
-            solids = _read_step_solids(p, ""TURN"")
-            if len(solids) == 1:
-                shape_one = solids[0]
-            else:
-                shape_one = _fuse_solids_in_order(solids, ""TURN file fuse (%s)"" % fn)
+        # If TURN file has >1 solids, fuse them within the file first
+        if len(solids) == 1:
+            shape_one = solids[0]
+        else:
+            base = solids[0]
+            for k in range(1, len(solids)):
+                base = base.fuse(solids[k])
+            shape_one = _as_solids_only_shape(base, ""TURN file fused %s"" % fn)
 
-            if turn_base is None:
-                turn_base = _solids_only(shape_one, ""TURN init"")
-            else:
-                turn_base = _try_remove_splitter(turn_base.fuse(shape_one))
-                turn_base = _solids_only(turn_base, ""TURN fuse running"")
+        shape_one = _as_solids_only_shape(shape_one, ""TURN file solids-only %s"" % fn)
 
-            fuse_ok += 1
-            _log(""TURN_FUSE %d/%d OK   %s   (%s)"" %
-                 (i + 1, len(turn_paths), fn, _fmt_secs(time.time() - t1)))
+        if turn_base is None:
+            turn_base = shape_one
+        else:
+            turn_base = turn_base.fuse(shape_one)
+            turn_base = _as_solids_only_shape(turn_base, ""TURN running fuse"")
 
-        except Exception as ex:
-            fuse_fail += 1
-            _log(""TURN_FUSE %d/%d FAIL %s   (%s)"" %
-                 (i + 1, len(turn_paths), fn, _fmt_secs(time.time() - t1)))
-            _log(""  ERROR: %s"" % str(ex))
-            _log(traceback.format_exc())
-            raise
+        if ((i + 1) % 10) == 0 or (i + 1) == len(turn_paths):
+            _log(""TURN_FUSE %d/%d OK"" % (i + 1, len(turn_paths)))
 
-    # >>> YOUR REQUEST: cleanup coplanar face seams AFTER TURN FUSE
-    _log(""TURN: SPLITTER CLEANUP (aggressive) ..."")
-    t_sc = time.time()
-    turn_base = _aggressive_splitter_cleanup(turn_base, ""TURN fused body"")
-    _log(""TURN: SPLITTER CLEANUP DONE (%s)"" % _fmt_secs(time.time() - t_sc))
+    turn_base = _as_solids_only_shape(turn_base, ""TURN fused body"")
 
-    turn_base = _solids_only(turn_base, ""TURN fused body"")
-    _log(""TURN: DONE"")
+    if DO_TURN_SPLITTER_CLEANUP:
+        _log(""TURN: splitter cleanup ..."")
+        turn_base = _splitter_cleanup(turn_base, ""TURN"")
+
+    # -----------------------------
+    # 2) MILL gate + CUT (ONLY single-solid files)
+    # -----------------------------
     _log("""")
+    _log(""=== MILL: GATE + CUT ==="")
 
-    # -----------------------------
-    # 2) MILL gate by solid count
-    # -----------------------------
-    _log(""=== MILL: ANALYZE / GATE BY SOLID COUNT ==="")
-    mill_export_only = []  # (solid, name)
-    mill_cut_tools = []    # (solid, filename)
+    after_mill = turn_base
+    mill_export_only_solids = []  # list of shapes (extra bodies)
 
     for i, p in enumerate(mill_paths):
         fn = os.path.basename(p)
-        t1 = time.time()
+        shp = _load_step_shape(p)
+        solids = _solids_list_or_throw(shp, ""MILL %s"" % fn)
 
-        solids = _read_step_solids(p, ""MILL"")
-        n = len(solids)
-        stem = os.path.splitext(fn)[0]
-
-        if n == 1:
-            mill_cut_tools.append((solids[0], fn))
-            mill_gate_cut += 1
-            _log(""MILL_GATE %d/%d CUT         solids=%d  %s   (%s)"" %
-                 (i + 1, len(mill_paths), n, fn, _fmt_secs(time.time() - t1)))
-        else:
-            for j, sld in enumerate(solids):
-                nm = ""MILL_SKIP_%03d_%03d_%s"" % (i + 1, j + 1, stem)
-                mill_export_only.append((sld, nm))
-            mill_export_only_count += n
-            mill_gate_export_only += 1
-            _log(""MILL_GATE %d/%d EXPORT_ONLY solids=%d  %s   (%s)"" %
-                 (i + 1, len(mill_paths), n, fn, _fmt_secs(time.time() - t1)))
-
-    _log("""")
-    _log(""=== MILL: CUT (sequential, only single-solid files) ==="")
-    after_mill = turn_base
-
-    for i, (tool, fn) in enumerate(mill_cut_tools):
-        t1 = time.time()
-        label = ""MILL cut %s (%d/%d)"" % (fn, i + 1, len(mill_cut_tools))
-
-        try:
-            ov = _bb_overlap(after_mill.BoundBox, tool.BoundBox)
-            _log(""MILL_BB %d/%d %s  overlap=%s"" % (i + 1, len(mill_cut_tools), fn, str(ov)))
-            if not ov:
-                mill_cut_skipped.append(""%s (SKIP_NO_BB_OVERLAP)"" % fn)
-                _log(""MILL_CUT %d/%d SKIP_NO_BB_OVERLAP %s   (%s)"" %
-                     (i + 1, len(mill_cut_tools), fn, _fmt_secs(time.time() - t1)))
-                continue
-        except Exception:
-            pass
-
-        try:
-            after_mill = _cut_one_logged(after_mill, tool, label)
-            mill_cut_ok += 1
-            _log(""MILL_CUT %d/%d OK   %s   (%s)"" %
-                 (i + 1, len(mill_cut_tools), fn, _fmt_secs(time.time() - t1)))
-        except Exception as ex:
-            mill_cut_fail += 1
-            mill_cut_skipped.append(""%s (FAIL: %s)"" % (fn, str(ex)))
-            _log(""MILL_CUT %d/%d FAIL %s   (%s)"" %
-                 (i + 1, len(mill_cut_tools), fn, _fmt_secs(time.time() - t1)))
-            _log(""  ERROR: %s"" % str(ex))
-            _log(traceback.format_exc())
-            continue
-
-    after_mill = _solids_only(after_mill, ""POST_MILL solids-only"")
-    _log(""MILL: DONE"")
-    _log("""")
-
-    # -----------------------------
-    # 3) DRILL subtract (SEQUENTIAL per STEP, per solid)
-    # -----------------------------
-    _log(""=== DRILL: CUT (sequential per file / per solid) ==="")
-    final_shape = after_mill
-
-    if drill_paths:
-        for i, p in enumerate(drill_paths):
-            bn = os.path.basename(p)
-            t_read = time.time()
-
+        if len(solids) == 1:
+            tool = solids[0]
             try:
-                solids = _read_step_solids(p, ""DRILL"")
-                drill_read_ok += 1
-                _log(""DRILL_READ %d/%d OK   %s   solids=%d   (%s)"" %
-                     (i + 1, len(drill_paths), bn, len(solids), _fmt_secs(time.time() - t_read)))
-            except Exception as ex:
-                drill_read_fail += 1
-                _log(""DRILL_READ %d/%d FAIL %s   (%s)"" %
-                     (i + 1, len(drill_paths), bn, _fmt_secs(time.time() - t_read)))
-                _log(""  ERROR: %s"" % str(ex))
-                _log(traceback.format_exc())
-                raise
-
-            for j, tool in enumerate(solids):
-                t1 = time.time()
-                label = ""DRILL cut %s solid %d/%d"" % (bn, j + 1, len(solids))
-
                 try:
-                    ov = _bb_overlap(final_shape.BoundBox, tool.BoundBox)
-                    _log(""DRILL_BB %d/%d.%d/%d %s overlap=%s"" %
-                         (i + 1, len(drill_paths), j + 1, len(solids), bn, str(ov)))
-                    if not ov:
-                        drill_cut_skipped.append(""%s solid %d/%d (SKIP_NO_BB_OVERLAP)"" %
-                                                 (bn, j + 1, len(solids)))
-                        _log(""DRILL_CUT  %d/%d.%d/%d SKIP_NO_BB_OVERLAP %s   (%s)"" %
-                             (i + 1, len(drill_paths), j + 1, len(solids), bn, _fmt_secs(time.time() - t1)))
+                    if not _bb_overlap(after_mill.BoundBox, tool.BoundBox):
                         continue
                 except Exception:
                     pass
 
-                try:
-                    final_shape = _cut_one_logged(final_shape, tool, label)
-                    drill_cut_ok += 1
-                    _log(""DRILL_CUT  %d/%d.%d/%d OK   %s   (%s)"" %
-                         (i + 1, len(drill_paths), j + 1, len(solids), bn, _fmt_secs(time.time() - t1)))
-                except Exception as ex:
-                    drill_cut_fail += 1
-                    drill_cut_skipped.append(""%s solid %d/%d (FAIL: %s)"" %
-                                             (bn, j + 1, len(solids), str(ex)))
-                    _log(""DRILL_CUT  %d/%d.%d/%d FAIL %s   (%s)"" %
-                         (i + 1, len(drill_paths), j + 1, len(solids), bn, _fmt_secs(time.time() - t1)))
-                    _log(""  ERROR: %s"" % str(ex))
-                    _log(traceback.format_exc())
-                    continue
-    else:
-        _log(""DRILL: no drill steps -> skipping cut"")
+                after_mill = after_mill.cut(tool)
+                after_mill = _as_solids_only_shape(after_mill, ""POST_MILL cut"")
+            except Exception:
+                # match original: continue on fail
+                continue
+        else:
+            # match original: DO NOT CUT multi-solid mill steps, export them as extra bodies
+            for sld in solids:
+                mill_export_only_solids.append(_as_solids_only_shape(sld, ""MILL export-only solid""))
 
-    final_shape = _solids_only(final_shape, ""FINAL solids-only"")
-    _log(""DRILL: DONE"")
+        if ((i + 1) % 25) == 0 or (i + 1) == len(mill_paths):
+            _log(""MILL_DONE %d/%d"" % (i + 1, len(mill_paths)))
+
+    after_mill = _as_solids_only_shape(after_mill, ""POST_MILL solids-only"")
+
+    # -----------------------------
+    # 3) DRILL subtract ALL solids from each drill step
+    # -----------------------------
     _log("""")
+    _log(""=== DRILL: CUT (ALL SOLIDS) ==="")
+
+    final_shape = after_mill
+
+    for i, p in enumerate(drill_paths):
+        bn = os.path.basename(p)
+        shp = _load_step_shape(p)
+        solids = _solids_list_or_throw(shp, ""DRILL %s"" % bn)
+
+        for j, tool in enumerate(solids):
+            try:
+                try:
+                    if not _bb_overlap(final_shape.BoundBox, tool.BoundBox):
+                        continue
+                except Exception:
+                    pass
+
+                final_shape = final_shape.cut(tool)
+                final_shape = _as_solids_only_shape(final_shape, ""POST_DRILL cut"")
+            except Exception:
+                # match original: continue per-solid failure
+                continue
+
+        if ((i + 1) % 25) == 0 or (i + 1) == len(drill_paths):
+            _log(""DRILL_DONE %d/%d"" % (i + 1, len(drill_paths)))
+
+    final_shape = _as_solids_only_shape(final_shape, ""FINAL solids-only"")
+
+    # Splitter cleanup at end (requested)
+    if DO_FINAL_SPLITTER_CLEANUP:
+        _log("""")
+        _log(""FINAL: splitter cleanup ..."")
+        final_shape = _splitter_cleanup(final_shape, ""FINAL"")
 
     # -----------------------------
-    # 4) Create export objects
+    # 4) EXPORT via document objects (reliable)
     # -----------------------------
-    _log(""=== EXPORT OBJECTS ==="")
+    _log("""")
+    _log(""=== EXPORT STEP ==="")
+
+    out_dir = os.path.dirname(out_step)
+    if out_dir and not os.path.isdir(out_dir):
+        os.makedirs(out_dir, exist_ok=True)
+
     export_objs = []
 
     obj_res = doc.addObject(""Part::Feature"", ""RESULT"")
     obj_res.Shape = final_shape
     export_objs.append(obj_res)
 
-    if mill_export_only:
-        _log(""EXPORT_ONLY: adding %d skipped MILL solids as extra bodies"" % len(mill_export_only))
-        for (shp, nm) in mill_export_only:
-            o = doc.addObject(""Part::Feature"", nm[:60])
-            o.Shape = _solids_only(shp, ""%s solids-only"" % nm)
-            export_objs.append(o)
+    # add export-only MILL solids as extra bodies
+    for idx, shp in enumerate(mill_export_only_solids):
+        o = doc.addObject(""Part::Feature"", ""MILL_SKIP_%04d"" % (idx + 1))
+        o.Shape = shp
+        export_objs.append(o)
 
     doc.recompute()
 
-    # -----------------------------
-    # 5) Export STEP + verify
-    # -----------------------------
-    _log("""")
-    _log(""=== EXPORT STEP ==="")
-    t1 = time.time()
-    _export_step_objects(export_objs, out_step)
-    _log(""EXPORT OK   (%s)"" % _fmt_secs(time.time() - t1))
+    Part.export(export_objs, out_step)
+
+    if (not os.path.isfile(out_step)) or (os.path.getsize(out_step) <= 0):
+        raise Exception(""OUT_STEP was not created (or is empty)."")
+
+    _log(""EXPORT OK  bodies=%d"" % len(export_objs))
+    _log(""Total time: %s"" % _fmt_secs(_elapsed()))
+    _log(""STATUS: SUCCESS"")
 
     try:
         App.closeDocument(doc.Name)
     except Exception:
         pass
-
-    # Summary
-    _log("""")
-    _log(""============================================================"")
-    _log(""=== SUMMARY ==="")
-    _log(""TURN fuse OK   : %d"" % fuse_ok)
-    _log(""TURN fuse FAIL : %d"" % fuse_fail)
-    _log("""")
-    _log(""MILL gated CUT files        : %d"" % mill_gate_cut)
-    _log(""MILL gated EXPORT_ONLY files: %d"" % mill_gate_export_only)
-    _log(""MILL CUT OK    : %d"" % mill_cut_ok)
-    _log(""MILL CUT FAIL  : %d"" % mill_cut_fail)
-    _log(""MILL extra exported bodies (skipped cut due to multi-solid): %d"" % mill_export_only_count)
-    if mill_cut_skipped:
-        _log(""MILL SKIPPED TOOLS:"")
-        for s in mill_cut_skipped:
-            _log(""  "" + s)
-    _log("""")
-    _log(""DRILL READ OK  : %d"" % drill_read_ok)
-    _log(""DRILL READ FAIL: %d"" % drill_read_fail)
-    _log(""DRILL CUT OK   : %d"" % drill_cut_ok)
-    _log(""DRILL CUT FAIL : %d"" % drill_cut_fail)
-    if drill_cut_skipped:
-        _log(""DRILL SKIPPED TOOLS:"")
-        for s in drill_cut_skipped:
-            _log(""  "" + s)
-    _log("""")
-    try:
-        _log(""OUT_STEP size: %d bytes"" % os.path.getsize(out_step))
-    except Exception:
-        pass
-    _log(""Total time: %s"" % _fmt_secs(_elapsed()))
-    _log(""STATUS: SUCCESS"")
-    _log(""============================================================"")
-    _log("""")
 
 
 # ============================================================
@@ -634,7 +429,7 @@ except Exception as ex:
     try:
         _log("""")
         _log(""============================================================"")
-        _log(""=== MERGE FAILED ==="")
+        _log(""=== FUSE FAILED ==="")
         _log(str(ex))
         _log(traceback.format_exc())
         _log(""STATUS: FAIL"")
@@ -655,6 +450,7 @@ finally:
         sys.stderr.flush()
     except Exception:
         pass
+
 
 
 

@@ -708,7 +708,7 @@ namespace CNC_Improvements_gcode_solids.Pages
             if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0)
                 return;
 
-            var __swRefresh = System.Diagnostics.Stopwatch.StartNew();
+            
 
             var lines = GetGcodeLines();
             var rtb = GetGcodeEditor();
@@ -827,42 +827,12 @@ namespace CNC_Improvements_gcode_solids.Pages
 
             UiUtilities.RebuildAndStoreNumberedLineStartIndex(rtb);
 
-            __swRefresh.Stop();
-            System.Diagnostics.Debug.WriteLine(
-               $"RefreshHighlighting(Turn) took {__swRefresh.Elapsed.TotalMilliseconds:0.###} ms " +
-               $"(lines={lines.Count}, sel={selectedLineIndex}, sx={startXIndex}, sz={startZIndex}, ex={endXIndex}, ez={endZIndex})");
-        }
+                 }
 
         // Unique tag styling: (u:xxxx) — light blue @ ~50% opacity
         private static readonly Brush UniqueTagBrush = UniqueTagColor.UniqueTagBrush;
 
-        private static bool TrySplitUniqueTag(string line, out string mainText, out string tagText)
-        {
-           
-            mainText = line ?? string.Empty;
-            tagText = string.Empty;
-           
-            if (string.IsNullOrEmpty(mainText))
-                return false;
-
-            // Support BOTH "(u:...)" and "(t:...)" suffix tags (any case)
-            int idxU = mainText.LastIndexOf("(u:", StringComparison.OrdinalIgnoreCase);
-            int idxT = mainText.LastIndexOf("(t:", StringComparison.OrdinalIgnoreCase);
-
-            int idx = Math.Max(idxU, idxT);
-            if (idx < 0)
-                return false;
-
-            // Must have a closing ')'
-            int close = mainText.IndexOf(')', idx);
-            if (close < 0)
-                return false;
-
-            // Keep ALL text from the tag start to the end
-            tagText = mainText.Substring(idx);
-            mainText = mainText.Substring(0, idx);
-            return true;
-        }
+       
 
         // -------------------------
         // Coordinate helpers

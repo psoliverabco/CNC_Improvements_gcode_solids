@@ -101,32 +101,23 @@ namespace CNC_Improvements_gcode_solids.Pages
         {
             Matrices.Clear();
 
+            // Always recreate the locked default
             DefaultMatrix = TransformMatrixVm.CreateDefaultLocked();
             Matrices.Add(DefaultMatrix);
 
-            // ------------------------------------------------------------
-            // DEFAULT #2 (editable): Flip and Z shift (side2)
-            // RotY=180, Z=-45
-            // MUST exist even for brand-new projects (dtos null/empty)
-            // ------------------------------------------------------------
-            if (!Matrices.Any(m => string.Equals(m.MatrixName?.Trim(),
-                                                "Flip and Z shift (side2)",
-                                                StringComparison.OrdinalIgnoreCase)))
+            // Always ensure the editable "side2" exists for all projects
+            TransformMatrixVm side2 = new TransformMatrixVm
             {
-                var side2 = new TransformMatrixVm
-                {
-                    MatrixName = "Flip and Z shift (side2)",
-                    RotY = "180",
-                    RotZ = "0",
-                    Tx = "0",
-                    Ty = "0",
-                    Tz = "-45",
-                    IsLocked = false
-                };
-
-                side2.Regions.Clear(); // user assigns regions
-                Matrices.Add(side2);
-            }
+                MatrixName = "Flip and Z shift (side2)",
+                RotY = "180",
+                RotZ = "0",
+                Tx = "0",
+                Ty = "0",
+                Tz = "-45",
+                IsLocked = false
+            };
+            side2.Regions.Clear();
+            Matrices.Add(side2);
 
             if (dtos == null || dtos.Count == 0)
             {
@@ -135,7 +126,7 @@ namespace CNC_Improvements_gcode_solids.Pages
                 return;
             }
 
-            // Treat any of these as "default" (supports old broken saves too)
+            // Treat any of these as "default" (supports old/broken saves too)
             static bool IsDefaultDto(TransformMatrixDto? d)
             {
                 if (d == null) return false;
@@ -147,26 +138,43 @@ namespace CNC_Improvements_gcode_solids.Pages
                        || nm.Equals("Base", StringComparison.OrdinalIgnoreCase);
             }
 
-            // Use the FIRST default-like dto to populate default regions (collapses multi-base files)
-            TransformMatrixDto? savedDefault = dtos.FirstOrDefault(IsDefaultDto);
-            if (savedDefault != null)
+            static void CopyRegionsInto(TransformMatrixVm target, IEnumerable<string>? srcRegions)
             {
-                DefaultMatrix.Regions.Clear();
-                foreach (var r in savedDefault.Regions ?? new List<string>())
+                target.Regions.Clear();
+                if (srcRegions == null) return;
+
+                foreach (var r in srcRegions)
                 {
                     string name = (r ?? "").Trim();
                     if (name.Length > 0)
-                        DefaultMatrix.Regions.Add(name);
+                        target.Regions.Add(name);
                 }
             }
 
-            // Import the rest, skipping anything default-like and skipping side2 if present in saved files
+            // 1) Populate Default regions from the first default-like dto (collapses multi-base files)
+            TransformMatrixDto? savedDefault = dtos.FirstOrDefault(IsDefaultDto);
+            if (savedDefault != null)
+                CopyRegionsInto(DefaultMatrix, savedDefault.Regions);
+
+            // 2) Populate side2 regions IF present in the saved file (THIS was being thrown away)
+            TransformMatrixDto? savedSide2 = dtos.FirstOrDefault(d =>
+            {
+                if (d == null) return false;
+                string nm = (d.MatrixName ?? "").Trim();
+                return nm.Equals("Flip and Z shift (side2)", StringComparison.OrdinalIgnoreCase);
+            });
+            if (savedSide2 != null)
+                CopyRegionsInto(side2, savedSide2.Regions);
+
+            // 3) Import all other transforms (name-matched, not index-matched)
             foreach (var d in dtos)
             {
                 if (d == null) continue;
                 if (IsDefaultDto(d)) continue;
 
                 string nm = (d.MatrixName ?? "").Trim();
+
+                // side2 already handled above
                 if (nm.Equals("Flip and Z shift (side2)", StringComparison.OrdinalIgnoreCase))
                     continue;
 
@@ -181,23 +189,14 @@ namespace CNC_Improvements_gcode_solids.Pages
                     IsLocked = false
                 };
 
-                vm.Regions.Clear();
-                if (d.Regions != null)
-                {
-                    foreach (var r in d.Regions)
-                    {
-                        string name = (r ?? "").Trim();
-                        if (name.Length > 0)
-                            vm.Regions.Add(name);
-                    }
-                }
-
+                CopyRegionsInto(vm, d.Regions);
                 Matrices.Add(vm);
             }
 
             SelectedMatrix = DefaultMatrix;
             ApplySelectedToCard();
         }
+
 
 
         // ------------------------------------------------------------

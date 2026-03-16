@@ -929,7 +929,7 @@ namespace CNC_Improvements_gcode_solids.Pages
             int regionEnd = MaxNonNeg(startXIndex, startYIndex, endXIndex, endYIndex, planeZIndex);
 
 
-            Debug.WriteLine("renum firedmill");
+            //Debug.WriteLine("renum firedmill");
 
             for (int i = 0; i < lines.Count; i++)
             {
